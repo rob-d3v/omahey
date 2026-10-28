@@ -1,0 +1,24 @@
+#!/bin/bash
+# omawake launcher: runs the Python package from this plugin checkout.
+# Uses the runtime made by `omawake setup` when it exists, otherwise the
+# system python3 (enough for setup/status/pause/...; not for daemon/test).
+set -euo pipefail
+
+self=$(readlink -f "${BASH_SOURCE[0]}")
+root=$(dirname "$(dirname "$self")")
+venv="${XDG_DATA_HOME:-$HOME/.local/share}/omawake/venv"
+
+if [[ -x $venv/bin/python ]]; then
+  py="$venv/bin/python"
+else
+  case "${1:-}" in
+    daemon | test)
+      echo "omawake: runtime not installed yet. Run: omawake setup" >&2
+      exit 1
+      ;;
+  esac
+  py=python3
+fi
+
+export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"
+exec "$py" -m omawake "$@"

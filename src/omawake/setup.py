@@ -1,0 +1,241 @@
+# SPDX-License-Identifier: Apache-2.0
+"""`omawake setup` / `omawake uninstall`: idempotent first run. Stdlib only.
+
+Each step checks first and only acts when something is missing, so running
+it again is always safe. Nothing outside these paths is touched:
+  ~/.local/share/omawake/   (venv, downloaded models)
+  ~/.config/omawake/        (config.json)
+  ~/.config/systemd/user/omawake.service
+  ~/.local/bin/omawake      (symlink to the plugin's bin/omawake)
+Voxtype's own config and your keybindings are never edited.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from . import config as C
+from . import models as M
+
+BIN = C.REPO_DIR / "bin" / "omawake"
+LINK = C.HOME / ".local/bin/omawake"
+
+
+class UI:
+    def __init__(self, assume_yes: bool):
+        self.yes = assume_yes
+        self.tty = sys.stdin.isatty()
+
+    def ask(self, question: str, default: bool = True) -> bool:
+        if self.yes:
+            print(f"  {question} yes (--yes)")
+            return True
+        if not self.tty:
+            print(f"  {question} skipped (no terminal; re-run with --yes)")
+            return False
+        hint = "[Y/n]" if default else "[y/N]"
+        ans = input(f"  {question} {hint} ").strip().lower()
+        return default if not ans else ans in ("y", "yes")
+
+
+def ok(msg):
+    print(f"  ✓ {msg}")
+
+
+def warn(msg):
+    print(f"  ! {msg}")
+
+
+def head(msg):
+    print(f"\n{msg}")
+
+
+def _systemctl(*args) -> subprocess.CompletedProcess:
+    return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True)
+
+
+def service_active() -> bool:
+    return _systemctl("is-active", "--quiet", C.UNIT_NAME).returncode == 0
+
+
+def voxtype_active() -> bool:
+    return _systemctl("is-active", "--quiet", "voxtype.service").returncode == 0 or \
+        subprocess.run(["pgrep", "-x", "voxtype"], capture_output=True).returncode == 0
+
+
+def venv_ok() -> bool:
+    py = C.VENV_DIR / "bin" / "python"
+    if not py.exists():
+        return False
+    r = subprocess.run([str(py), "-c", "import numpy, onnxruntime"], capture_output=True)
+    return r.returncode == 0
+
+
+def readiness() -> dict:
+    cfg = C.load_config()
+    found = M.resolve(cfg)
+    return {
+        "voxtype": shutil.which("voxtype") is not None,
+        "voxtype_running": voxtype_active(),
+        "venv": venv_ok(),
+        "model": found[0] if found else None,
+        "service": C.UNIT_FILE.exists(),
+        "service_active": service_active(),
+        "default_agent": _default_agent(),
+    }
+
+
+def _default_agent() -> str:
+    try:
+        r = subprocess.run(["omarchy-default-agent"], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+UNIT = """[Unit]
+Description=omawake: wake word for Omarchy (unofficial community plugin)
+Documentation=https://github.com/rob-d3v/omawake
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service voxtype.service
+
+[Service]
+Type=simple
+ExecStart="{bin}" daemon
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target
+"""
+
+
+def run_setup(assume_yes=False, service=True, link=True) -> int:
+    ui = UI(assume_yes)
+    C.ensure_dirs()
+    print("omawake setup (safe to run again)")
+    problems = 0
+
+    head("1/6 Voxtype (Omarchy dictation)")
+    if not shutil.which("voxtype"):
+        warn("Voxtype is not installed.")
+        if ui.ask("Install it now with omarchy-voxtype-install? (asks for your password)"):
+            subprocess.run(["omarchy-voxtype-install"])
+    if shutil.which("voxtype"):
+        ok("voxtype found")
+        if not voxtype_active():
+            warn("the Voxtype daemon is not running")
+            if ui.ask("Start it (systemctl --user enable --now voxtype)?"):
+                _systemctl("enable", "--now", "voxtype.service")
+        if voxtype_active():
+            ok("voxtype daemon running")
+        else:
+            problems += 1
+    else:
+        warn("omawake needs Voxtype for speech-to-text; re-run setup after installing it")
+        problems += 1
+
+    head("2/6 Default agent")
+    agent = _default_agent()
+    if agent:
+        ok(f"omarchy default agent: {agent}")
+    else:
+        warn("no default agent yet (Ask mode needs one): omarchy default agent <name>")
+
+    head("3/6 Python runtime (uv)")
+    if not shutil.which("uv"):
+        warn("uv is not installed")
+        if ui.ask("Install uv with omarchy-pkg-add uv? (asks for your password)"):
+            subprocess.run(["omarchy-pkg-add", "uv"])
+    if shutil.which("uv"):
+        env = dict(os.environ, UV_PROJECT_ENVIRONMENT=str(C.VENV_DIR))
+        r = subprocess.run(["uv", "sync", "--frozen", "--no-dev", "--project", str(C.REPO_DIR)], env=env)
+        if r.returncode == 0 and venv_ok():
+            ok(f"runtime ready in {C.VENV_DIR}")
+        else:
+            warn("uv sync failed (see above)")
+            problems += 1
+    else:
+        problems += 1
+
+    head("4/6 Wake word model")
+    cfg = C.load_config()
+    found = M.resolve(cfg)
+    if not found or found[0] != cfg.get("wake_word"):
+        want = cfg.get("wake_word") or M.catalog().get("default")
+        entry = next((m for m in M.catalog().get("models", []) if m.get("id") == want), None)
+        if entry and entry.get("status") == "available":
+            try:
+                M.download(want, log=lambda s: print("  " + s))
+            except Exception as e:  # noqa: BLE001
+                warn(f"download failed: {e}")
+        elif entry:
+            warn(f"“{entry.get('phrase', want)}” is not published yet ({entry.get('status')}).")
+        found = M.resolve(C.load_config())
+    if found:
+        ok(f"using wake word {found[0]} ({found[1]})")
+    else:
+        warn("no wake word model on this machine yet; omawake will wait for one")
+        problems += 1
+
+    head("5/6 Command line")
+    if link:
+        if LINK.is_symlink() and Path(os.readlink(LINK)) == BIN:
+            ok(f"{LINK} -> {BIN}")
+        elif LINK.exists() or LINK.is_symlink():
+            warn(f"{LINK} exists and is not ours; leaving it alone")
+        else:
+            LINK.parent.mkdir(parents=True, exist_ok=True)
+            LINK.symlink_to(BIN)
+            ok(f"linked {LINK}")
+    else:
+        ok("skipped (--no-link)")
+
+    head("6/6 Background service")
+    if service:
+        text = UNIT.format(bin=BIN)
+        if not C.UNIT_FILE.exists() or C.UNIT_FILE.read_text() != text:
+            C.atomic_write(C.UNIT_FILE, text)
+            _systemctl("daemon-reload")
+            ok(f"wrote {C.UNIT_FILE}")
+        if venv_ok():
+            _systemctl("enable", C.UNIT_NAME)
+            _systemctl("restart", C.UNIT_NAME)
+            if service_active():
+                ok("omawake.service running")
+            else:
+                warn("omawake.service did not start: journalctl --user -u omawake")
+                problems += 1
+    else:
+        ok("skipped (--no-service); run `omawake daemon` yourself")
+
+    print("\nDone." if not problems else f"\nFinished with {problems} item(s) to fix (see ! above).")
+    if found:
+        print(f"Say “{found[0].replace('_', ' ')}” and start talking.")
+    return 0 if not problems else 1
+
+
+def run_uninstall(assume_yes=False, keep_config=False) -> int:
+    ui = UI(assume_yes)
+    print("omawake uninstall")
+    if C.UNIT_FILE.exists() or service_active():
+        _systemctl("disable", "--now", C.UNIT_NAME)
+        C.UNIT_FILE.unlink(missing_ok=True)
+        _systemctl("daemon-reload")
+        ok("service removed")
+    if LINK.is_symlink() and Path(os.readlink(LINK)) == BIN:
+        LINK.unlink()
+        ok("command link removed")
+    for d in (C.DATA_DIR, C.RUNTIME_DIR, C.STATE_DIR):
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+            ok(f"removed {d}")
+    if C.CONFIG_DIR.exists() and not keep_config and ui.ask(f"Remove your settings in {C.CONFIG_DIR}?", False):
+        shutil.rmtree(C.CONFIG_DIR, ignore_errors=True)
+        ok("settings removed")
+    print(f"\nTo remove the bar widget too: omarchy plugin remove {C.PLUGIN_ID}")
+    return 0

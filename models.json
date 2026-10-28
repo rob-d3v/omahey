@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "default": "hey_omarchy",
+  "release_base": "https://github.com/rob-d3v/omawake/releases/download/models-v1/",
+  "note": "Bundles are wake-core tar.gz archives (manifest.json + head .onnx + models/ + optional .verifier/). sha256 is filled in when each asset is published; entries without status 'available' are never downloaded.",
+  "models": [
+    {
+      "id": "hey_omarchy",
+      "phrase": "Hey Omarchy",
+      "language": "en",
+      "status": "training",
+      "url": "https://github.com/rob-d3v/omawake/releases/download/models-v1/hey_omarchy.tar.gz",
+      "sha256": null,
+      "license": "Apache-2.0"
+    },
+    {
+      "id": "omarchy",
+      "phrase": "Omarchy",
+      "language": "en",
+      "status": "training",
+      "url": "https://github.com/rob-d3v/omawake/releases/download/models-v1/omarchy.tar.gz",
+      "sha256": null,
+      "license": "Apache-2.0"
+    }
+  ]
+}
