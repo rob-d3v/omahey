@@ -21,4 +21,7 @@ else
 fi
 
 export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"
+# Keep bytecode out of the plugin folder: the shell hot-reloads a plugin
+# whenever a file under ~/.config/omarchy/plugins/ changes.
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-$HOME/.cache}/omawake/pycache"
 exec "$py" -m omawake "$@"
