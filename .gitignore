@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+# model binaries are release assets, never committed
+*.onnx
+*.tar.gz

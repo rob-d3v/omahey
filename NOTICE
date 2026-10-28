@@ -1,0 +1,11 @@
+omawake
+Copyright 2026 rob-d3v
+
+Unofficial community plugin, not affiliated with Omarchy or 37signals.
+
+This product includes the wake-core streaming runtime (src/omawake/wake_core.py)
+from the Ania Player project by the same author, licensed under Apache-2.0.
+
+Wake word bundles downloaded at runtime use the frozen openWakeWord
+front-end models (melspectrogram, embedding; Apache-2.0, David Scripka) and
+Silero VAD (MIT, Silero Team). Their licences ship inside each bundle.
