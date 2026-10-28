@@ -144,6 +144,10 @@ To use the model you get there, drop the bundle folder into
   window you chose, plus a line in the local log.
 - The only network access is the model download during setup, over HTTPS
   with a sha256 check.
+- Setup only installs things after you confirm: Voxtype through
+  `omarchy-voxtype-install` and uv through `omarchy-pkg-add`. It also manages
+  the `omawake.service` systemd user unit. The plugin never runs code
+  downloaded at runtime; model bundles are data files (ONNX + JSON).
 - Pause from the widget, or run `omawake pause`. This closes the mic stream
   completely, and the `omawake` stream disappears from PipeWire.
 

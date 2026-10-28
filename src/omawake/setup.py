@@ -230,7 +230,7 @@ def run_uninstall(assume_yes=False, keep_config=False) -> int:
     if LINK.is_symlink() and Path(os.readlink(LINK)) == BIN:
         LINK.unlink()
         ok("command link removed")
-    for d in (C.DATA_DIR, C.RUNTIME_DIR, C.STATE_DIR):
+    for d in (C.DATA_DIR, C.RUNTIME_DIR, C.STATE_DIR, C.CACHE_DIR):
         if d.exists():
             shutil.rmtree(d, ignore_errors=True)
             ok(f"removed {d}")
