@@ -50,7 +50,7 @@ DEFAULTS: dict = {
     "conversation_timeout_s": 20,
     "first_speech_timeout_s": 6,
     "end_silence_ms": 1100,
-    "max_utterance_s": 45,
+    "max_utterance_s": 35,          # + 20 s wait stays under Voxtype's 60 s cap
     "submit_delay_ms": 350,
     "agent_ready_delay_ms": 1500,
     "agent_launch_timeout_s": 12,
