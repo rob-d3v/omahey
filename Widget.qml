@@ -45,7 +45,7 @@ Panel {
   function glyph() {
     if (st === "paused" || st === "stopped") return String.fromCodePoint(0xF036D)      // mic off
     if (st === "error") return String.fromCodePoint(0xF036D)
-    if (st === "setup") return String.fromCodePoint(0xF08C7)                           // mic + gear
+    if (st === "setup") return String.fromCodePoint(0xF036F)                           // mic + gear (md-microphone_settings)
     if (st === "conversation") return String.fromCodePoint(0xF05CB)                    // voice
     return String.fromCodePoint(0xF036C)                                               // mic
   }
@@ -228,7 +228,7 @@ Panel {
         Button {
           visible: !root.setupOk
           width: parent.width
-          iconText: String.fromCodePoint(0xF08C7)
+          iconText: String.fromCodePoint(0xF036F)
           text: "Finish setup"
           foreground: root.bar.foreground
           fontFamily: root.bar.fontFamily

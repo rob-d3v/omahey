@@ -49,6 +49,13 @@ Setup checks each step and only acts when something is missing:
 5. **Command line.** Links `~/.local/bin/omawake`.
 6. **Background service.** Installs and starts the `omawake.service` systemd user unit.
 
+> **“Hey Omarchy” and “Omarchy” are still training** and can't be downloaded
+> yet. Until they ship, setup shows two ways to get going: `hey_jarvis`
+> (an openWakeWord model with a non-commercial licence, see
+> [Wake words](#wake-words)), or a wake word you make yourself. If you also
+> run Ania Player (or [omaania](https://github.com/rob-d3v/omaania)), give
+> the two different wake words, or one phrase wakes both.
+
 ### Requirements and dependencies
 
 | What | Why | Shipped by Omarchy? |
@@ -236,7 +243,8 @@ These set the single wake word used when there is no `config.toml`.
 Settings live in `~/.config/omawake/config.json`. Other options there:
 `conversation_timeout_s`, `end_silence_ms`, `first_speech_timeout_s`,
 `dismiss_phrases`, `chime`, `submit_delay_ms`, `audio_target` (a PipeWire
-source name) and `model_dirs`.
+source `node.name`, e.g. from `pactl list short sources`; a sink's
+`.monitor` does not work here) and `model_dirs`.
 
 ## Wake words
 
@@ -275,8 +283,10 @@ upstream's), so these heads share the same stream as your other words.
 
 **Create your own wake word.** The widget menu links to
 [aniamodels.shop/create-wakeword](https://aniamodels.shop/create-wakeword).
-To use the model you get there, drop the bundle folder into
-`~/.local/share/omawake/models/` and select it in the widget.
+To use the model you get there, unpack the download into
+`~/.local/share/omawake/models/` so that its `manifest.json` ends up at
+`~/.local/share/omawake/models/<id>/manifest.json`, then select it in the
+widget or run `omawake wake <id>`.
 
 ## Security
 

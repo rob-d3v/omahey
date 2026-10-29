@@ -201,6 +201,11 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         ok("wake words: " + ", ".join(w["model"] for w in _words()) + f" (first: {found[0]})")
     else:
         warn("no wake word model on this machine yet; omawake will wait for one")
+        print("    Until “Hey Omarchy” is published, pick one of these:")
+        print("      omawake models download hey_jarvis && omawake wake hey_jarvis"
+              "   # non-commercial licence, shown first")
+        print("      your own wake word: https://aniamodels.shop/create-wakeword"
+              " (unpack it into ~/.local/share/omawake/models/)")
         problems += 1
 
     head("5/6 Command line")
