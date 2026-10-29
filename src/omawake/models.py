@@ -104,9 +104,10 @@ def listing(cfg: dict) -> list[dict]:
     return out
 
 
-def resolve(cfg: dict) -> tuple[str, Path] | None:
-    """The configured wake word, else the catalog default, else any local one."""
-    have = installed(cfg)
+def resolve(cfg: dict, exclude=()) -> tuple[str, Path] | None:
+    """The configured wake word, else the catalog default, else any local one
+    (never one in `exclude`: words Ania Player is using)."""
+    have = {k: v for k, v in installed(cfg).items() if k not in set(exclude)}
     want = [cfg.get("wake_word"), catalog().get("default")]
     for w in want:
         if w and w in have:
@@ -115,6 +116,36 @@ def resolve(cfg: dict) -> tuple[str, Path] | None:
         k = sorted(have)[0]
         return k, have[k]
     return None
+
+
+def effective_words(cfg: dict, wc=None, skip=()) -> tuple[object, list[dict]]:
+    """(WakeConfig, words): what will really listen, for the daemon, status
+    and setup alike. Legacy config (no config.toml) falls back to any
+    installed word when the configured one is missing; `configured` then
+    names the word that was asked for. Words in `skip` (used by a running
+    Ania Player) are never active and carry "ania_player": True."""
+    from . import wakeconf as W
+    wc = W.load(cfg) if wc is None else wc
+    have = installed(cfg)
+    skip = set(skip)
+    configured = None
+    if wc.source == "legacy" and wc.specs:
+        first = wc.specs[0]
+        if first.model not in have or first.model in skip:
+            found = resolve(cfg, exclude=skip)
+            if found:
+                configured, first.model = first.model, found[0]
+    phrases = {m["id"]: m["phrase"] for m in listing(cfg)}
+    words = []
+    for i, s in enumerate(wc.specs):
+        inst, shared = s.model in have, s.model in skip
+        words.append({"model": s.model,
+                      "phrase": s.label or phrases.get(s.model) or s.model.replace("_", " "),
+                      "action": s.action, "describe": s.describe(), "enabled": s.enabled,
+                      "installed": inst, "active": s.enabled and inst and not shared,
+                      "ania_player": shared,
+                      "configured": configured if i == 0 else None})
+    return wc, words
 
 
 def entry(model_id: str) -> dict | None:

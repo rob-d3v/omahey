@@ -265,7 +265,7 @@ Panel {
               required property var modelData
               width: parent.width
               implicitHeight: Math.max(wordText.implicitHeight, wordSwitch.implicitHeight)
-              opacity: modelData.installed ? 1 : 0.5
+              opacity: modelData.installed && !modelData.ania_player ? 1 : 0.5
 
               Text {
                 id: wordIcon
@@ -294,7 +294,8 @@ Panel {
                 Text {
                   width: parent.width
                   elide: Text.ElideRight
-                  text: wordRow.modelData.installed ? wordRow.modelData.describe : "not installed: omawake models"
+                  text: wordRow.modelData.ania_player ? "skipped: Ania Player uses this word"
+                        : wordRow.modelData.installed ? wordRow.modelData.describe : "not installed: omawake models"
                   color: root.bar.foreground
                   opacity: 0.6
                   font.family: root.bar.fontFamily

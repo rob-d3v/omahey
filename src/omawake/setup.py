@@ -84,13 +84,14 @@ def venv_ok() -> bool:
 
 
 def active_model(cfg: dict) -> tuple[str, Path] | None:
-    """First enabled, installed wake word (legacy: any installed one)."""
-    wc = W.load(cfg)
+    """First wake word that will really listen (legacy: any installed one;
+    never a word a running Ania Player is using)."""
+    from . import aniaplayer as A
     have = M.installed(cfg)
-    for s in wc.enabled():
-        if s.model in have:
-            return s.model, have[s.model]
-    return M.resolve(cfg) if wc.source == "legacy" else None
+    for w in M.effective_words(cfg, skip=A.words_in_use(cfg))[1]:
+        if w["active"]:
+            return w["model"], have[w["model"]]
+    return None
 
 
 def readiness() -> dict:
@@ -204,6 +205,11 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
             warn(f"“{entry.get('phrase', spec.model)}” is not published yet ({entry.get('status')}).")
         else:
             warn(f"{spec.model}: no such model installed")
+    from .cli import words_offline
+    for w in words_offline(C.load_config()):
+        if w.get("ania_player"):
+            warn(f"{w['model']}: Ania Player already listens for this word, so omawake skips it"
+                 " (pick another one: omawake config edit)")
     found = active_model(C.load_config())
     if found:
         ok("wake words: " + ", ".join(w["model"] for w in _words()) + f" (first: {found[0]})")

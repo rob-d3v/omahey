@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 
+from . import aniaplayer as A
 from . import config as C
 from . import models as M
 from . import wakeconf as W
@@ -45,7 +46,7 @@ def cmd_status(a) -> int:
     else:
         out = {"running": False, "state": "stopped", "message": "Not running",
                "mode": cfg["mode"], "sensitivity": cfg["sensitivity"],
-               "wake_word": cfg["wake_word"], "conversation": cfg["conversation"], "paused": False}
+               "wake_word": "", "conversation": cfg["conversation"], "paused": False}
     out["setup"] = ready
     out["setup_ok"] = bool(ready["voxtype"] and ready["venv"] and ready["model"]
                            and (ready["service"] or out["running"]))
@@ -53,22 +54,28 @@ def cmd_status(a) -> int:
                          for m in M.listing(cfg)]
     if not live:
         out["words"] = words_offline(cfg)
+        # the word(s) that would really load, not the configured name
+        out["wake_word"] = ",".join(w["model"] for w in out["words"] if w["active"])
         wc = W.load(cfg)
         out.update(config_source=wc.source, config_errors=wc.errors[:5],
                    commands_allowed=wc.commands_allowed, unsafe_reason=wc.unsafe_reason)
+    out["configured_wake_word"] = next((w["configured"] for w in out.get("words") or []
+                                        if w.get("configured")), None)
     out["config_file"] = str(W.TOML_FILE)
     out["config_exists"] = W.TOML_FILE.exists()
     if a.json:
         print(json.dumps(out))
         return 0
     print(f"omawake: {out['state']}" + (f" — {out.get('message')}" if out.get("message") else ""))
-    print(f"  mode {out['mode']} · sensitivity {out['sensitivity']} · wake word {out.get('wake_word')}"
+    ww = out.get("wake_word") or "none"
+    if out.get("configured_wake_word"):
+        ww += f" (configured {out['configured_wake_word']} is not usable here)"
+    print(f"  mode {out['mode']} · sensitivity {out['sensitivity']} · wake word {ww}"
           f" · conversation {'on' if out.get('conversation') else 'off'}")
     if live and live.get("detector"):
         print(f"  detector {live['detector']}")
     for w in out.get("words") or []:
-        print(f"  {'on ' if w['enabled'] else 'off'} {w['model']:14} {w['describe']}"
-              + ("" if w["installed"] else "  (not installed)"))
+        print(f"  {'on ' if w['enabled'] else 'off'} {w['model']:14} {w['describe']}" + word_note(w))
     if out.get("unsafe_reason"):
         print(f"  ! commands disabled: {out['unsafe_reason']}")
     for k, v in ready.items():
@@ -86,17 +93,16 @@ def _set(key: str, value) -> int:
 
 
 def words_offline(cfg: dict) -> list[dict]:
-    wc = W.load(cfg)
-    have = M.installed(cfg)
-    if wc.source == "legacy" and wc.specs[0].model not in have:
-        found = M.resolve(cfg)          # same fallback as the daemon
-        if found:
-            wc.specs[0].model = found[0]
-    phrases = {m["id"]: m["phrase"] for m in M.listing(cfg)}
-    return [{"model": s.model, "phrase": s.label or phrases.get(s.model, s.model.replace("_", " ")),
-             "action": s.action, "describe": s.describe(), "enabled": s.enabled,
-             "installed": s.model in have, "active": s.enabled and s.model in have}
-            for s in wc.specs]
+    """Same choice the daemon makes (fallback, Ania Player's words skipped)."""
+    return M.effective_words(cfg, skip=A.words_in_use(cfg))[1]
+
+
+def word_note(w: dict) -> str:
+    if w.get("ania_player"):
+        return "  (skipped: Ania Player uses this word)"
+    if not w["installed"]:
+        return "  (not installed: omawake models)"
+    return ""
 
 
 def cmd_words(a) -> int:
@@ -115,7 +121,7 @@ def cmd_words(a) -> int:
     scores = (live or {}).get("scores") or {}
     for w in words:
         state = "on " if w["enabled"] else "off"
-        miss = "" if w["installed"] else "  (not installed: omawake models)"
+        miss = word_note(w)
         sc = f"  score {scores[w['model']]:.2f}" if w["model"] in scores else ""
         print(f"  [{state}] {w['model']:14} “{w['phrase']}” -> {w['describe']}{miss}{sc}")
     for s in wc.specs:
@@ -164,8 +170,17 @@ def cmd_config(a) -> int:
         print(path)
         return 0
     if a.action in ("init", "edit"):
-        if W.write_template(path):
-            print(f"created {path}")
+        cfg = C.load_config()
+        skip = A.words_in_use(cfg)
+        order = [m["id"] for m in M.catalog().get("models", [])]
+        model, inst = W.starter_model(M.installed(cfg), skip, order)
+        if W.write_template(path, model, inst):
+            print(f"created {path} (wake word: {model})")
+            if skip:
+                print(f"  skipped {', '.join(sorted(skip))}: Ania Player already listens for it")
+            if not inst:
+                print(f"  {model} is not installed yet: omawake models download {model}")
+            print("  “Hey Omarchy” is coming soon; it is in the file, commented out.")
         elif a.action == "init":
             print(f"{path} already exists")
         if a.action == "edit":

@@ -89,15 +89,17 @@ TEMPLATE = """\
 #                    cooldown_s = 2 | enabled = false | timeout_s = 15
 
 [[wake]]
-model = "hey_omarchy"
+model = "{model}"{model_note}
 action = "ask"
 
+# Coming soon: the official “Hey Omarchy” model is still training. Once
+# `omawake models` lists hey_omarchy as installed, use it here instead.
 # [[wake]]
-# model = "omarchy"
-# action = "dictate"
+# model = "hey_omarchy"
+# action = "ask"
 
 # [[wake]]
-# model = "hey_jarvis"            # omawake models download hey_jarvis (non-commercial licence)
+# model = "{example}"            # omawake models download {example} (non-commercial licence)
 # action = "command"
 # pack = "omarchy"
 # commands = { "next background" = "omarchy-theme-bg-next" }
@@ -340,7 +342,32 @@ def load(cfg: dict | None = None, path: Path | None = None) -> WakeConfig:
     return wc
 
 
-def write_template(path: Path | None = None) -> bool:
+PREFERRED = "hey_omarchy"         # the official word, once its model is published
+FALLBACK = "hey_jarvis"           # downloadable today (upstream, non-commercial)
+
+
+def starter_model(have, skip=(), order=()) -> tuple[str, bool]:
+    """(model, installed) for the starter config: the official word when it
+    is installed, else an installed word (catalogue order first) that Ania
+    Player is not using, else the downloadable fallback."""
+    usable = [m for m in have if m not in set(skip)]
+    if PREFERRED in usable:
+        return PREFERRED, True
+    for m in [*order, *sorted(usable)]:
+        if m in usable:
+            return m, True
+    return FALLBACK, False
+
+
+def render_template(model: str = PREFERRED, installed: bool = True) -> str:
+    note = "" if installed else \
+        f"   # not installed yet: omawake models download {model} (then: omawake reload)"
+    example = "hey_mycroft" if model == FALLBACK else FALLBACK
+    return TEMPLATE.replace("{model}", model).replace("{model_note}", note) \
+        .replace("{example}", example)
+
+
+def write_template(path: Path | None = None, model: str = PREFERRED, installed: bool = True) -> bool:
     """Create the starter config.toml (0600) if it does not exist."""
     path = TOML_FILE if path is None else Path(path)
     if path.exists():
@@ -348,5 +375,5 @@ def write_template(path: Path | None = None) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(TEMPLATE)
+        f.write(render_template(model, installed))
     return True

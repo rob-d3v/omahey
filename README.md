@@ -53,8 +53,9 @@ Setup checks each step and only acts when something is missing:
 > yet. Until they ship, setup shows two ways to get going: `hey_jarvis`
 > (an openWakeWord model with a non-commercial licence, see
 > [Wake words](#wake-words)), or a wake word you make yourself. If you also
-> run Ania Player (or [omaania](https://github.com/rob-d3v/omaania)), give
-> the two different wake words, or one phrase wakes both.
+> run Ania Player (or [omaania](https://github.com/rob-d3v/omaania)),
+> omawake leaves the player's wake word to the player, see
+> [Ania Player](#ania-player-shared-wake-words).
 
 ### Requirements and dependencies
 
@@ -105,10 +106,16 @@ from the widget (below). To run several wake words, each with its own
 action, create `~/.config/omawake/config.toml`:
 
 ```bash
-omawake config init     # writes a commented starter file (mode 0600)
+omawake config init     # writes a commented starter file (mode 0600) that works today
 omawake config edit     # opens it with omarchy-launch-editor
 omawake config check    # validates it, checks its permissions, reloads the daemon
 ```
+
+`config init` picks a wake word you can use right now: `hey_omarchy` if its
+model is installed, else one you already have (and that Ania Player is not
+using), else `hey_jarvis` with the command to download it. `hey_omarchy` is
+in the file commented out as "coming soon". Without a `config.toml`,
+omawake switches to `hey_omarchy` by itself once its model is installed.
 
 ```toml
 [[wake]]
@@ -262,6 +269,23 @@ GitHub release assets and are never committed to this repo. If you already
 use Ania Player, omawake also picks up its wake words from
 `~/.local/share/aniaplayer/wakeword/`.
 
+### Ania Player: shared wake words
+
+Ania Player (`aniaplayer.service`) has its own wake word engine. If both
+listened for the same word, one “Ok Ania” would wake the avatar *and* your
+agent. So while Ania Player is running with its wake word on, omawake skips
+every word the player uses (read from the player's
+`~/.config/aniaplayer/plugins/voice_assistant/voice_config.json`:
+`wake_word.model_name`, `model_name_2`, `extra_wake_words`). It logs and
+notifies once, `omawake status`/`omawake words` mark the word
+“skipped: Ania Player uses this word”, and without a `config.toml` omawake
+falls back to another installed word. It checks again every 20 seconds, so
+starting, stopping or reconfiguring the player is picked up on its own.
+
+To listen for the player's word anyway, set
+`"skip_ania_player_words": false` in `~/.config/omawake/config.json` and run
+`omawake reload`.
+
 **openWakeWord pre-trained models.** `hey_jarvis`, `alexa` and
 `hey_mycroft` are pre-trained heads from
 [openWakeWord](https://github.com/dscripka/openWakeWord) by David Scripka.
@@ -346,6 +370,7 @@ Voice commands run programs, so omawake is strict about where they come from.
 | It wakes by itself | `omawake sensitivity low`, or `sensitivity = "low"` / a higher `threshold` for that word in `config.toml` |
 | “Commands disabled” in the widget | `config.toml` is writable by others: `chmod go-w ~/.config/omawake/config.toml` |
 | A voice command runs the wrong thing | `omawake match "what you said"`; add your own phrase, or raise `match_cutoff` |
+| Status says a word is “skipped: Ania Player uses this word” | Ania Player listens for it; pick another word (`omawake config edit`), or see [Ania Player](#ania-player-shared-wake-words) |
 | The wrong wake word wins | Lower that word's `sensitivity`, or raise its `threshold` |
 | “Voxtype is not running” | `systemctl --user status voxtype`, or re-run `omawake setup` |
 | “No default agent yet” | `omarchy default agent codex` (or claude, opencode, …) |

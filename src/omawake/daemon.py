@@ -23,6 +23,7 @@ import socket
 import threading
 import time
 
+from . import aniaplayer as A
 from . import commands as K
 from . import config as C
 from . import desktop as D
@@ -80,6 +81,8 @@ class Daemon:
         self.last_score = 0.0
         self.turn_no = 0
         self.lock = threading.Lock()
+        self.player_words: set[str] = set()     # left to a running Ania Player
+        self._told_player: set[str] = set()     # explained once per word
 
     # ── state ──────────────────────────────────────────────────────────────
     def set_state(self, state: str, message: str = "") -> None:
@@ -99,7 +102,7 @@ class Daemon:
                 "words": self.words, "config_source": self.wc.source,
                 "config_errors": self.wc.errors[:5], "commands_allowed": self.wc.commands_allowed,
                 "unsafe_reason": self.wc.unsafe_reason, "last_result": self.last_result,
-                "dry_run": self.dry_run,
+                "dry_run": self.dry_run, "ania_player_words": sorted(self.player_words),
             }
 
     def publish(self) -> None:
@@ -125,19 +128,15 @@ class Daemon:
         if self.wc.unsafe_reason:
             log.error("config.toml is not safe, commands are disabled: %s", self.wc.unsafe_reason)
         have = M.installed(self.cfg)
-        if self.wc.source == "legacy" and self.wc.specs[0].model not in have:
-            found = M.resolve(self.cfg)       # old behaviour: any installed word
-            if found:
-                log.info("wake word %r not installed, using %r", self.wc.specs[0].model, found[0])
-                self.wc.specs[0].model = found[0]
+        self.player_words = A.words_in_use(self.cfg)
+        self.wc, words = M.effective_words(self.cfg, self.wc, self.player_words)
+        if words and words[0]["configured"]:
+            log.info("wake word %r not usable here, using %r", words[0]["configured"], words[0]["model"])
+        self.explain_player_words(words)
         gshift = C.SENSITIVITY_SHIFT.get(self.cfg["sensitivity"], 0.0)
-        specs, words = [], []
-        for s in self.wc.specs:
-            ok = s.enabled and s.model in have
-            words.append({"model": s.model, "phrase": s.label or s.model.replace("_", " "),
-                          "action": s.action, "describe": s.describe(), "enabled": s.enabled,
-                          "installed": s.model in have, "active": ok})
-            if ok:
+        specs = []
+        for s, w in zip(self.wc.specs, words):
+            if w["active"]:
                 shift = C.SENSITIVITY_SHIFT.get(s.sensitivity, gshift) if s.sensitivity else gshift
                 specs.append(WordSpec(s.model, have[s.model], shift, s.threshold, s.cooldown_s))
         self.words = words
@@ -146,8 +145,13 @@ class Daemon:
         if not specs:
             self.detector = None
             self.wake_id = self.phrase = ""
-            why = "No wake word installed. Run: omawake setup" if not any(w["installed"] for w in words) \
-                else "All wake words are turned off"
+            shared = [w["phrase"] for w in words if w["ania_player"] and w["enabled"]]
+            if shared:
+                why = f"“{shared[0]}” belongs to Ania Player; pick another word: omawake config edit"
+            elif not any(w["installed"] for w in words):
+                why = "No wake word installed. Run: omawake setup"
+            else:
+                why = "All wake words are turned off"
             self.set_state("setup", why)
             return False
         try:
@@ -168,6 +172,29 @@ class Daemon:
         if not self.busy:
             self.set_state("idle", self.idle_message())
         return True
+
+    def explain_player_words(self, words: list[dict]) -> None:
+        """Log and notify once per word that omawake leaves to Ania Player."""
+        for w in words:
+            if not w["ania_player"] or w["model"] in self._told_player:
+                continue
+            self._told_player.add(w["model"])
+            log.warning("skipping wake word %r: Ania Player (aniaplayer.service) already listens for it, "
+                        "so one phrase would wake both. Set \"skip_ania_player_words\": false in %s "
+                        "to listen anyway.", w["model"], C.CONFIG_FILE)
+            D.notify(f"omawake leaves “{w['phrase']}” to Ania Player",
+                     "Ania Player already listens for this wake word, so omawake skips it "
+                     "to avoid waking both. Pick another word: omawake config edit")
+
+    def watch_player(self) -> None:
+        """Re-check Ania Player's words (started, stopped, changed) now and then."""
+        try:
+            now = A.words_in_use(self.cfg)
+        except Exception:  # noqa: BLE001 - never kill the daemon over this
+            return
+        if now != self.player_words:
+            log.info("Ania Player wake words changed: %s -> %s", sorted(self.player_words), sorted(now))
+            self.need_rebuild = True
 
     # ── audio thread ───────────────────────────────────────────────────────
     def audio_loop(self) -> None:
@@ -523,6 +550,7 @@ class Daemon:
         words = [(s.model, s.enabled, s.threshold, s.sensitivity, s.cooldown_s) for s in wc.specs]
         return json.dumps([words, wc.arbitration_ms, wc.settle_ms, self.cfg.get("sensitivity"),
                            self.cfg.get("audio_target"), self.cfg.get("model_dirs"),
+                           self.cfg.get("skip_ania_player_words"),
                            self.cfg.get("wake_word") if wc.source == "legacy" else None])
 
     def rebuild_words_only(self) -> None:
@@ -595,8 +623,12 @@ class Daemon:
         for t in threads:
             t.start()
         log.info("omawake %s started (pid %d)", VERSION, os.getpid())
+        next_watch = time.monotonic() + 20
         while self.running:
             time.sleep(0.3)
+            if time.monotonic() >= next_watch:
+                next_watch = time.monotonic() + 20
+                self.watch_player()
         self.mic.close()
         if self.busy:
             D.Voxtype.cancel()
