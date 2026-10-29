@@ -9,3 +9,8 @@ from the Ania Player project by the same author, licensed under Apache-2.0.
 Wake word bundles downloaded at runtime use the frozen openWakeWord
 front-end models (melspectrogram, embedding; Apache-2.0, David Scripka) and
 Silero VAD (MIT, Silero Team). Their licences ship inside each bundle.
+
+omawake does not bundle or redistribute the openWakeWord pre-trained wake
+word models (hey_jarvis, alexa, hey_mycroft; CC BY-NC-SA 4.0, David Scripka).
+`omawake models download` fetches them from the upstream release only after
+the user accepts that licence, and stores the notice next to the model.
