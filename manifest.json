@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.rob-d3v.omawake",
   "name": "omawake",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "rob-d3v",
   "license": "Apache-2.0",
-  "description": "Say \"Hey Omarchy\" to wake your default AI agent and dictate with Voxtype, hands-free. Unofficial community plugin.",
+  "description": "Wake words for Omarchy: each one asks your agent, dictates with Voxtype, or runs a command from your own config. Unofficial community plugin.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "omawake",
-    "description": "Wake word state. Click pauses or resumes listening; right click opens mode, sensitivity and wake word settings.",
+    "description": "Wake word state. Click pauses or resumes listening; right click lists your wake words and their actions, with on/off switches and Edit config.",
     "category": "Productivity",
     "allowMultiple": false,
     "defaultSection": "right"

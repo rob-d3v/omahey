@@ -8,6 +8,10 @@ listens through Omarchy's own dictation (Voxtype), types what you said and
 presses Enter. Then it keeps listening for your follow-up until you say
 “that's all”. There's also a Dictate mode that types at your cursor.
 
+You can run several wake words at once and give each one its own job:
+“Hey Omarchy” asks the agent, “Omarchy” dictates, and “Hey Jarvis, lock
+screen” runs `omarchy-system-lock`. See [Wake words and actions](#wake-words-and-actions).
+
 > **Unofficial community plugin, not affiliated with Omarchy or 37signals.**
 
 <!-- DEMO: replace with a 30 s GIF (docs/demo.gif) -->
@@ -16,7 +20,8 @@ _Demo GIF coming soon._
 - Runs 100% locally. No cloud, no account, no telemetry.
 - Uses what Omarchy already ships: Voxtype for speech-to-text, `omarchy agent`
   for your agent, `wtype` for typing, PipeWire for the mic.
-- A bar widget in the native style: mic state, click to pause, right click for settings.
+- A bar widget in the native style: mic state, click to pause, right click
+  for your wake words, their actions and on/off switches.
 - English first.
 
 ## Install
@@ -55,11 +60,12 @@ Setup checks each step and only acts when something is missing:
 | `uv` | locked Python environment | offered by setup |
 | Python ≥ 3.11 + `numpy`, `onnxruntime` | wake word engine (locked in `uv.lock`) | installed by setup into its own venv |
 | A wake word bundle (~2 MB) | the model | downloaded by setup |
+| Python ≥ 3.11 `tomllib` | reads `config.toml` | stdlib |
 
 ## How it works
 
 ```
-mic ─ pw-record ─► wake core (openWakeWord head + mel + embedding,
+mic ─ pw-record ─► wake core (shared mel + embedding, N openWakeWord heads,
                     Silero VAD gate, optional verifier) ──► wake!
                                                              │
           ┌───────────── chime, bar icon lights up ◄─────────┘
@@ -75,7 +81,7 @@ mic ─ pw-record ─► wake core (openWakeWord head + mel + embedding,
 - The wake engine is the wake-core runtime from Ania Player: an
   openWakeWord-compatible ONNX head on top of the frozen melspectrogram and
   embedding models, a Silero VAD gate, an adaptive threshold and an optional
-  second-stage `verifier.onnx`. It uses about 7 % of one CPU core and about 90 MB of RAM (measured with Silero and the verifier on).
+  second-stage `verifier.onnx`. It uses about 8 % of one CPU core and about 80 MB of RAM (measured with Silero and the verifier on), and stays there with five wake words.
 - Voxtype stays in charge of speech-to-text. omawake drives it with
   `voxtype record start/stop`, so your Voxtype model, language, GPU setting
   and OSD all apply.
@@ -84,6 +90,118 @@ mic ─ pw-record ─► wake core (openWakeWord head + mel + embedding,
 - The daemon writes `$XDG_RUNTIME_DIR/omawake/state.json`. The bar widget
   watches that file and calls the `omawake` CLI, which talks to the daemon
   over a user-only unix socket.
+
+## Wake words and actions
+
+Without a config file, omawake listens for one wake word and uses the mode
+from the widget (below). To run several wake words, each with its own
+action, create `~/.config/omawake/config.toml`:
+
+```bash
+omawake config init     # writes a commented starter file (mode 0600)
+omawake config edit     # opens it with omarchy-launch-editor
+omawake config check    # validates it, checks its permissions, reloads the daemon
+```
+
+```toml
+[[wake]]
+model = "hey_omarchy"
+action = "ask"              # ask | dictate | command | agent-prompt
+
+[[wake]]
+model = "omarchy"
+action = "dictate"
+sensitivity = "high"        # optional, per word: low | normal | high
+# threshold = 0.6           # optional: replaces the model's calibrated threshold
+# cooldown_s = 2            # optional: how soon this word may fire again
+
+[[wake]]
+model = "hey_jarvis"
+action = "command"
+command = "omarchy-launch-browser"     # runs right away, no speech needed
+
+[[wake]]
+model = "hey_mycroft"
+action = "command"                     # voice commands: wake word, then a phrase
+pack = "omarchy"                       # the built-in command pack (below)
+commands = { "next background" = "omarchy-theme-bg-next", "files" = "omarchy-launch-nautilus" }
+fallback = "agent"                     # unknown phrase -> omarchy agent prompt "<what you said>"
+```
+
+| action | what happens after the wake word |
+|---|---|
+| `ask` | Ask mode: the agent window opens, what you say is typed into it, conversation follows |
+| `dictate` | Dictate mode: Voxtype types what you say at the cursor |
+| `agent-prompt` | Voxtype transcribes what you say and runs `omarchy agent prompt "<text>"` (a new agent) |
+| `command` + `command` | runs that one command |
+| `command` + `commands` / `pack` | Voxtype transcribes a short phrase, omawake fuzzy-matches it against your phrase list and runs the match. Nothing is spoken back; the result shows in the widget and as a notification. No match: notification, or `fallback = "agent"` |
+
+Phrase matching ignores case, punctuation and filler (“could you lock the
+screen please” matches `lock screen`). When two phrases for different
+commands are about equally close, nothing runs. Try it without a mic:
+`omawake match "turn on the night light"` prints what would run.
+
+Top-level options: `arbitration_ms` (default 400), `settle_ms` (1000),
+`command_timeout_s` (15), `match_cutoff` (0.72); per word `timeout_s`,
+`label`, `enabled = false`.
+
+The widget lists the wake words with their actions and an on/off switch
+for each, plus **Edit config…**. The switches are stored in `config.json`
+(`word_enabled`), so omawake never rewrites your `config.toml`.
+
+```bash
+omawake words [-v]                 # active wake words, actions (and phrases with -v)
+omawake enable|disable <model>
+omawake test                       # live scores for every active head
+omawake trigger --wake hey_jarvis --text "lock screen"   # simulate a wake word + phrase
+omawake daemon --dry-run           # log commands instead of running them
+```
+
+### Built-in command pack (`pack = "omarchy"`)
+
+Only commands that ship in `/usr/share/omarchy/bin`. An entry whose program
+is missing on your system is skipped.
+
+| say | runs |
+|---|---|
+| lock / lock screen | `omarchy-system-lock` |
+| screenshot / take a screenshot | `omarchy-capture-screenshot` |
+| screen recording | `omarchy-capture-screenrecording` (start/stop) |
+| next background | `omarchy-theme-bg-next` |
+| change theme | `omarchy-theme-switcher` |
+| night light | `omarchy-toggle-nightlight` |
+| open browser / browser | `omarchy-launch-browser` |
+| open terminal / terminal | `omarchy-launch-terminal` |
+| open files | `omarchy-launch-nautilus` |
+| volume up / louder | `omarchy-audio-output-volume raise` |
+| volume down / quieter | `omarchy-audio-output-volume lower` |
+| mute | `omarchy-audio-output-volume mute-toggle` |
+| do not disturb | `omarchy-toggle-notification-silencing` |
+| stay awake | `omarchy-toggle-idle` |
+| open menu | `omarchy-menu` |
+
+Your own `commands` entries win over the pack.
+
+### Several wake words at once
+
+All wake words share one microphone stream and one melspectrogram +
+embedding front-end (and one Silero VAD); only the small per-word heads and
+verifiers are added. When two words fire within `arbitration_ms`, the one
+whose peak went furthest over its own threshold wins, then nothing else
+fires for `settle_ms` (about 1 s), and the winner waits for its cooldown.
+
+Measured with the real daemon on this machine (30 s, idle room, Silero on,
+one verifier, `--dry-run`):
+
+| active wake words | daemon CPU (one core) | RSS |
+|---|---|---|
+| 1 | 7.9 % | 76 MB |
+| 3 | 7.4 % | 78 MB |
+| 5 | 8.2 % | 80 MB |
+
+Offline, per 80 ms frame: 2.3 ms with 1 word, 2.65 ms with 3 or 5. A head
+costs well under 0.1 ms; the shared front-end is nearly all of the work.
+`pw-record` adds about 0.2 %.
 
 ## Modes
 
@@ -114,6 +232,7 @@ omawake test --selftest        # check the model against its golden files
 omawake logs [-f | --open]
 ```
 
+These set the single wake word used when there is no `config.toml`.
 Settings live in `~/.config/omawake/config.json`. Other options there:
 `conversation_timeout_s`, `end_silence_ms`, `first_speech_timeout_s`,
 `dismiss_phrases`, `chime`, `submit_delay_ms`, `audio_target` (a PipeWire
@@ -121,20 +240,77 @@ source name) and `model_dirs`.
 
 ## Wake words
 
-| id | phrase | status |
-|---|---|---|
-| `hey_omarchy` | “Hey Omarchy” | training, coming with the first release |
-| `omarchy` | “Omarchy” | training |
+| id | phrase | status | licence |
+|---|---|---|---|
+| `hey_omarchy` | “Hey Omarchy” | training, coming with the first release | Apache-2.0 |
+| `omarchy` | “Omarchy” | training | Apache-2.0 |
+| `hey_ania` | “Hey Ania” | your own model (see below) | yours |
+| `hey_jarvis` | “Hey Jarvis” | download from upstream | CC BY-NC-SA 4.0 |
+| `alexa` | “Alexa” | download from upstream | CC BY-NC-SA 4.0 |
+| `hey_mycroft` | “Hey Mycroft” | download from upstream | CC BY-NC-SA 4.0 |
 
-The catalog is in [`models.json`](models.json). The model files are GitHub
-release assets and are never committed to this repo. If you already use
-Ania Player, omawake also picks up its wake words from
+The catalog is in [`models.json`](models.json). omawake's own models are
+GitHub release assets and are never committed to this repo. If you already
+use Ania Player, omawake also picks up its wake words from
 `~/.local/share/aniaplayer/wakeword/`.
+
+**openWakeWord pre-trained models.** `hey_jarvis`, `alexa` and
+`hey_mycroft` are pre-trained heads from
+[openWakeWord](https://github.com/dscripka/openWakeWord) by David Scripka.
+Its code is Apache-2.0, but the pre-trained models are licensed
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+(non-commercial, attribution, share-alike). So omawake does **not** bundle
+or redistribute them. It downloads the head from the upstream v0.5.1
+release (pinned sha256) only after you accept the licence, and wraps it
+into a local bundle with a `LICENSE-NOTICE.txt`:
+
+```bash
+omawake models                                    # list, with licences
+omawake models download hey_jarvis                # shows the licence and asks
+omawake models download hey_jarvis --accept-license
+```
+
+The front-end comes from a bundle you already have (bit-identical to
+upstream's), so these heads share the same stream as your other words.
 
 **Create your own wake word.** The widget menu links to
 [aniamodels.shop/create-wakeword](https://aniamodels.shop/create-wakeword).
 To use the model you get there, drop the bundle folder into
 `~/.local/share/omawake/models/` and select it in the widget.
+
+## Security
+
+Voice commands run programs, so omawake is strict about where they come from.
+
+- **Commands come only from your own `config.toml`.** Speech only *selects*
+  one of the phrases you wrote; transcribed text is never run, never
+  passed to a shell, and never added to a command's arguments.
+- The one place speech reaches a program is `agent-prompt` (and
+  `fallback = "agent"`): it runs `omarchy-agent-prompt "<text>"` with the
+  transcript as a single argument. Note that `omarchy agent` starts your
+  agent in its unattended mode, so only use these actions if you are
+  comfortable with what your agent may do on a spoken prompt.
+- Commands run as an argv list (`shlex.split`, `shell=False`): `;`, `|`,
+  `$(…)`, `&&`, globs and redirects are plain text. Need a pipeline? Put it in
+  a script you own and call the script.
+- Each command has a timeout (`command_timeout_s`, default 15 s; per word
+  `timeout_s`). It runs in its own process group with no stdin, and the
+  whole group is stopped on timeout. Launchers such as `omarchy-launch-*`
+  return right away, so GUI apps are not affected.
+- Every run is logged (`omawake logs`): the argv, which wake word and phrase
+  chose it, the exit status and the time it took.
+- **Permission check.** omawake refuses to run *any* command from
+  `config.toml` unless the file (after following symlinks) is a regular file
+  owned by you and not writable by group or others, and its folder is owned
+  by you (or root) and not writable by others. Otherwise the widget and
+  `omawake config check` show why, and `ask` / `dictate` keep working. Fix it
+  with `chmod go-w ~/.config/omawake/config.toml`. `omawake config init`
+  creates the file with mode 0600.
+- omawake only reads `config.toml`, and only creates it when you run
+  `config init`/`config edit`. The daemon's control socket is user-only
+  (0600).
+- To check a config without risk: `omawake match "<phrase>"` (runs nothing)
+  and `omawake daemon --dry-run`.
 
 ## Privacy
 
@@ -157,7 +333,10 @@ To use the model you get there, drop the bundle folder into
 |---|---|
 | The icon shows a gear | Setup isn't finished: click it, or run `omawake setup` |
 | It never wakes | Run `omawake test` and watch the score while you say the wake word. Try `omawake sensitivity high`. Check that the right mic is the default source, or set `audio_target` |
-| It wakes by itself | `omawake sensitivity low` |
+| It wakes by itself | `omawake sensitivity low`, or `sensitivity = "low"` / a higher `threshold` for that word in `config.toml` |
+| “Commands disabled” in the widget | `config.toml` is writable by others: `chmod go-w ~/.config/omawake/config.toml` |
+| A voice command runs the wrong thing | `omawake match "what you said"`; add your own phrase, or raise `match_cutoff` |
+| The wrong wake word wins | Lower that word's `sensitivity`, or raise its `threshold` |
 | “Voxtype is not running” | `systemctl --user status voxtype`, or re-run `omawake setup` |
 | “No default agent yet” | `omarchy default agent codex` (or claude, opencode, …) |
 | The text arrives but isn't sent | Raise `submit_delay_ms` (some TUIs treat fast input followed by Enter as a paste) |
@@ -189,6 +368,9 @@ omarchy plugin validate .
 
 - Wake engine: wake-core from [Ania Player](https://aniamodels.shop), by the same author.
 - [openWakeWord](https://github.com/dscripka/openWakeWord) front-end models (Apache-2.0).
+  The optional `hey_jarvis`, `alexa` and `hey_mycroft` heads are openWakeWord
+  pre-trained models (CC BY-NC-SA 4.0), downloaded by you from upstream, not
+  distributed here.
 - [Silero VAD](https://github.com/snakers4/silero-vad) (MIT).
 - [Voxtype](https://voxtype.io) for speech-to-text, and Omarchy for the agent launcher and the shell.
 
