@@ -29,6 +29,18 @@ Panel {
     : (running ? String(live.state || info.state || "idle") : "stopped")
   readonly property bool hot: ["listening", "conversation", "transcribing", "typing"].indexOf(st) !== -1
   readonly property var wakeWords: info.wake_words || []
+  // Wake words from config.toml with their actions (live from the daemon when it runs).
+  readonly property var words: (running && live.words) ? live.words : (info.words || [])
+  readonly property bool legacy: String(live.config_source || info.config_source || "legacy") === "legacy"
+  readonly property string unsafeReason: String(live.unsafe_reason || info.unsafe_reason || "")
+  readonly property var configErrors: live.config_errors || info.config_errors || []
+
+  function actionIcon(a) {
+    if (a === "dictate") return String.fromCodePoint(0xF030C)       // keyboard
+    if (a === "command") return String.fromCodePoint(0xF018D)       // console
+    if (a === "agent-prompt") return String.fromCodePoint(0xF0361)  // message
+    return String.fromCodePoint(0xF06A9)                            // robot
+  }
 
   function glyph() {
     if (st === "paused" || st === "stopped") return String.fromCodePoint(0xF036D)      // mic off
@@ -44,6 +56,7 @@ Panel {
     case "listening": return "Listening…"
     case "transcribing": return "Transcribing…"
     case "typing": return "Sending to agent…"
+    case "running": return "Running command…"
     case "conversation": return "Conversation"
     case "paused": return "Paused"
     case "setup": return "Setup needed"
@@ -224,10 +237,124 @@ Panel {
           onClicked: { Quickshell.execDetached([root.cli, "open-setup"]); root.close() }
         }
 
+        Text {
+          visible: text !== "" && root.running && root.st === "idle"
+          width: parent.width
+          wrapMode: Text.Wrap
+          maximumLineCount: 2
+          elide: Text.ElideRight
+          text: String(root.live.last_result || "")
+          color: root.bar.foreground
+          opacity: 0.6
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
         PanelSeparator { foreground: root.bar.foreground }
 
-        // ---------- mode ----------
+        // ---------- wake words + actions (config.toml) ----------
         Column {
+          width: parent.width
+          spacing: Style.space(8)
+          PanelSectionHeader { text: "WAKE WORDS"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
+
+          Repeater {
+            model: root.words
+            Item {
+              id: wordRow
+              required property var modelData
+              width: parent.width
+              implicitHeight: Math.max(wordText.implicitHeight, wordSwitch.implicitHeight)
+              opacity: modelData.installed ? 1 : 0.5
+
+              Text {
+                id: wordIcon
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.actionIcon(wordRow.modelData.action)
+                color: wordRow.modelData.active && root.running ? Commons.Color.accent : root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+              }
+              Column {
+                id: wordText
+                anchors.left: wordIcon.right
+                anchors.leftMargin: Style.space(10)
+                anchors.right: wordSwitch.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                  width: parent.width
+                  elide: Text.ElideRight
+                  text: "“" + wordRow.modelData.phrase + "”"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+                Text {
+                  width: parent.width
+                  elide: Text.ElideRight
+                  text: wordRow.modelData.installed ? wordRow.modelData.describe : "not installed: omawake models"
+                  color: root.bar.foreground
+                  opacity: 0.6
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
+              ToggleSwitch {
+                id: wordSwitch
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                foreground: root.bar.foreground
+                checked: wordRow.modelData.enabled === true
+                onToggled: root.run([checked ? "disable" : "enable", wordRow.modelData.model])
+              }
+            }
+          }
+
+          Text {
+            visible: root.unsafeReason !== "" || root.configErrors.length > 0
+            width: parent.width
+            wrapMode: Text.Wrap
+            text: root.unsafeReason !== "" ? "Commands disabled: " + root.unsafeReason
+                                           : "config.toml: " + root.configErrors.join("; ")
+            color: Commons.Color.urgent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Row {
+            id: cfgRow
+            width: parent.width
+            spacing: Style.space(6)
+            Button {
+              width: (cfgRow.width - cfgRow.spacing) / 2
+              leftAlign: true
+              iconText: String.fromCodePoint(0xF03EB)
+              text: "Edit config…"
+              fontSize: Style.font.bodySmall
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              onClicked: { Quickshell.execDetached([root.cli, "config", "edit"]); root.close() }
+            }
+            Button {
+              width: (cfgRow.width - cfgRow.spacing) / 2
+              leftAlign: true
+              iconText: String.fromCodePoint(0xF0450)
+              text: "Reload"
+              fontSize: Style.font.bodySmall
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              onClicked: root.run(["reload"])
+            }
+          }
+        }
+
+        PanelSeparator { foreground: root.bar.foreground }
+
+        // ---------- mode (only without config.toml) ----------
+        Column {
+          visible: root.legacy
           width: parent.width
           spacing: Style.space(8)
           PanelSectionHeader { text: "MODE"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
@@ -279,13 +406,13 @@ Panel {
           }
         }
 
-        // ---------- wake word ----------
+        // ---------- wake word (only without config.toml) ----------
         Column {
           width: parent.width
           spacing: Style.space(8)
-          PanelSectionHeader { text: "WAKE WORD"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
+          PanelSectionHeader { visible: root.legacy; text: "WAKE WORD"; foreground: root.bar.foreground; fontFamily: root.bar.fontFamily }
           Repeater {
-            model: root.wakeWords
+            model: root.legacy ? root.wakeWords : []
             Button {
               required property var modelData
               width: parent.width
