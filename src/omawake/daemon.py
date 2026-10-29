@@ -2,8 +2,10 @@
 """The omawake daemon.
 
 Threads:
-  audio   pw-record -> wake core (+ Silero VAD) -> endpointer; posts wake events
-  worker  runs one session at a time (Ask / Dictate), drives Voxtype + agent
+  audio   pw-record -> shared front-end (mel + embedding + Silero) -> N wake
+          heads -> arbiter -> endpointer; posts one wake event per utterance
+  worker  runs one session at a time for the word that won (ask, dictate,
+          command, agent-prompt), drives Voxtype, the agent and commands
   control unix socket for the CLI and the bar widget (JSON lines)
 
 The bar widget reads $XDG_RUNTIME_DIR/omawake/state.json (written on every
@@ -20,17 +22,19 @@ import signal
 import socket
 import threading
 import time
-from pathlib import Path
 
+from . import commands as K
 from . import config as C
 from . import desktop as D
 from . import models as M
 from . import text as T
+from . import wakeconf as W
+from .arbiter import Arbiter
 from .audio import MicStream
-from .engine import Detector, Endpointer, pcm_chunks
+from .engine import Endpointer, MultiDetector, WordSpec, pcm_chunks
 
 log = logging.getLogger("omawake")
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -51,15 +55,21 @@ class Aborted(Exception):
 
 
 class Daemon:
-    def __init__(self):
+    def __init__(self, dry_run: bool = False):
+        self.dry_run = dry_run
         self.cfg = C.load_config()
+        self.wc = W.load(self.cfg)
+        self.arbiter = Arbiter()
+        self.words: list[dict] = []
+        self.scores: dict[str, float] = {}
+        self.last_result = ""
         self.running = True
         self.paused = bool(self.cfg.get("start_paused", False))
         self.state = "starting"
         self.message = ""
         self.wake_id = ""
         self.phrase = ""
-        self.detector: Detector | None = None
+        self.detector: MultiDetector | None = None
         self.need_rebuild = True
         self.endpointer = Endpointer(int(self.cfg["end_silence_ms"]))
         self.events: queue.Queue = queue.Queue()
@@ -86,6 +96,10 @@ class Daemon:
                 "sensitivity": self.cfg["sensitivity"], "wake_word": self.wake_id,
                 "phrase": self.phrase, "paused": self.paused, "conversation": bool(self.cfg["conversation"]),
                 "mic": self.mic_open, "pid": os.getpid(), "version": VERSION, "updated": time.time(),
+                "words": self.words, "config_source": self.wc.source,
+                "config_errors": self.wc.errors[:5], "commands_allowed": self.wc.commands_allowed,
+                "unsafe_reason": self.wc.unsafe_reason, "last_result": self.last_result,
+                "dry_run": self.dry_run,
             }
 
     def publish(self) -> None:
@@ -95,29 +109,64 @@ class Daemon:
             log.warning("cannot write state file: %s", e)
 
     # ── detector ───────────────────────────────────────────────────────────
+    def idle_message(self) -> str:
+        names = [f"“{w['phrase']}”" for w in self.words if w["active"]]
+        if not names:
+            return "No wake word active"
+        return "Say " + (", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0])
+
     def rebuild(self) -> bool:
         self.need_rebuild = False
-        found = M.resolve(self.cfg)
-        if not found:
+        self.wc = W.load(self.cfg)
+        for e in self.wc.errors:
+            log.error("config: %s", e)
+        for w in self.wc.warnings:
+            log.warning("config: %s", w)
+        if self.wc.unsafe_reason:
+            log.error("config.toml is not safe, commands are disabled: %s", self.wc.unsafe_reason)
+        have = M.installed(self.cfg)
+        if self.wc.source == "legacy" and self.wc.specs[0].model not in have:
+            found = M.resolve(self.cfg)       # old behaviour: any installed word
+            if found:
+                log.info("wake word %r not installed, using %r", self.wc.specs[0].model, found[0])
+                self.wc.specs[0].model = found[0]
+        gshift = C.SENSITIVITY_SHIFT.get(self.cfg["sensitivity"], 0.0)
+        specs, words = [], []
+        for s in self.wc.specs:
+            ok = s.enabled and s.model in have
+            words.append({"model": s.model, "phrase": s.label or s.model.replace("_", " "),
+                          "action": s.action, "describe": s.describe(), "enabled": s.enabled,
+                          "installed": s.model in have, "active": ok})
+            if ok:
+                shift = C.SENSITIVITY_SHIFT.get(s.sensitivity, gshift) if s.sensitivity else gshift
+                specs.append(WordSpec(s.model, have[s.model], shift, s.threshold, s.cooldown_s))
+        self.words = words
+        self.arbiter = Arbiter(self.wc.arbitration_ms / 1000.0, self.wc.settle_ms / 1000.0,
+                               {s.model: s.cooldown_s for s in self.wc.specs if s.cooldown_s is not None})
+        if not specs:
             self.detector = None
             self.wake_id = self.phrase = ""
-            self.set_state("setup", "No wake word model installed. Run: omawake setup")
+            why = "No wake word installed. Run: omawake setup" if not any(w["installed"] for w in words) \
+                else "All wake words are turned off"
+            self.set_state("setup", why)
             return False
-        wid, path = found
         try:
-            shift = C.SENSITIVITY_SHIFT.get(self.cfg["sensitivity"], 0.0)
-            self.detector = Detector(path, shift)
+            t0 = time.monotonic()
+            self.detector = MultiDetector(specs)
         except Exception as e:  # noqa: BLE001 - surface any model problem in the widget
-            log.exception("loading %s failed", path)
+            log.exception("loading wake words failed")
             self.detector = None
-            self.set_state("error", f"Could not load wake word {wid}: {e}")
+            self.set_state("error", f"Could not load wake words: {e}")
             return False
-        self.wake_id, self.phrase = wid, self.detector.phrase
-        if wid != self.cfg.get("wake_word"):
-            log.info("wake word %r not installed, using %r", self.cfg.get("wake_word"), wid)
-        log.info("detector: %s (%s)", self.detector.describe(), path)
+        labels = {s.model: s.label for s in self.wc.specs}
+        for w in self.words:
+            if w["active"] and not labels.get(w["model"]):
+                w["phrase"] = self.detector.phrase_of(w["model"])
+        self.wake_id = ",".join(self.detector.names)
+        self.phrase = self.detector.phrase_of(self.detector.names[0])
+        log.info("detector (%.2fs): %s", time.monotonic() - t0, self.detector.describe())
         if not self.busy:
-            self.set_state("idle", f"Say “{self.phrase}”")
+            self.set_state("idle", self.idle_message())
         return True
 
     # ── audio thread ───────────────────────────────────────────────────────
@@ -149,14 +198,21 @@ class Daemon:
                     out = self.detector.process(chunk)
                     f = out["features"]
                     self.endpointer.update(f.vad_prob, f.rms, f.bg_rms)
-                    sc = out["per_wake"][0].get("score")
-                    self.last_score = sc or 0.0
+                    self.scores = {r["wake"]: r.get("score") or 0.0 for r in out["per_wake"]}
+                    self.last_score = max(self.scores.values(), default=0.0)
                     frames += 1
-                    if out["event"] and not self.busy:
-                        log.info("wake: %s", out["event"])
-                        self.events.put(("wake", out["event"]))
+                    now = time.monotonic()
+                    if not self.busy:
+                        for ev in out["events"]:
+                            if self.arbiter.offer(ev["wake"], ev["margin"], now, ev):
+                                log.info("candidate: %s", ev)
+                        win = self.arbiter.poll(now)
+                        if win:
+                            log.info("wake: %s%s", win["wake"],
+                                     f" (beat {', '.join(win['rivals'])})" if win["rivals"] else "")
+                            self.events.put(("wake", win))
                     if frames == 30 and self.state == "error":
-                        self.set_state("idle", f"Say “{self.phrase}”")
+                        self.set_state("idle", self.idle_message())
                     backoff = 1.0
             except Exception:  # noqa: BLE001
                 log.exception("audio loop crashed")
@@ -183,11 +239,7 @@ class Daemon:
             self.busy = True
             self.abort.clear()
             try:
-                mode = payload.get("mode") or self.cfg["mode"]
-                if mode == "dictate":
-                    self.dictate_session()
-                else:
-                    self.ask_session(payload.get("text"))
+                self.dispatch(payload)
             except Aborted:
                 log.info("session aborted")
                 D.Voxtype.cancel()
@@ -201,10 +253,96 @@ class Daemon:
                 self.busy = False
                 if self.detector is not None:
                     self.detector.reset()   # drop audio heard during the session
+                self.arbiter.pending, self.arbiter.opened = [], None
                 if self.paused:
                     self.set_state("paused", "Paused")
                 elif self.detector is not None:
-                    self.set_state("idle", f"Say “{self.phrase}”")
+                    self.set_state("idle", self.idle_message())
+
+    def spec_for(self, payload: dict) -> W.WakeSpec:
+        name = payload.get("wake")
+        spec = self.wc.get(name) if name and name != "manual" else None
+        if spec is None:
+            spec = next(iter(self.wc.enabled()), None) or W.WakeSpec(model=name or "manual")
+        return spec
+
+    def dispatch(self, payload: dict) -> None:
+        spec = self.spec_for(payload)
+        action = payload.get("mode") or spec.action
+        phrase = self.detector.phrase_of(spec.model) if self.detector else spec.model.replace("_", " ")
+        log.info("action %s for %s", action, spec.model)
+        if action == "dictate":
+            self.dictate_session()
+        elif action == "command":
+            self.command_session(spec, phrase, payload.get("text"))
+        elif action == "agent-prompt":
+            self.agent_prompt_session(phrase, payload.get("text"))
+        else:
+            self.ask_session(payload.get("text"), phrase)
+
+    def report(self, title: str, body: str = "", ok: bool = True) -> None:
+        """Result of a command, shown in the widget and as a notification."""
+        self.last_result = f"{title}: {body}" if body else title
+        log.info("result: %s", self.last_result)
+        D.notify(title, body, urgent=not ok)
+        if self.cfg.get("chime", True):
+            D.chime("done" if ok else "error")
+
+    def _listen_phrase(self, phrase: str, injected: str | None, message: str) -> str | None:
+        """One short transcript after the wake word (None = nothing said)."""
+        if injected is not None:
+            text = injected
+        else:
+            text = self.record_turn(float(self.cfg["first_speech_timeout_s"]), "listening", message)
+        if text is None:
+            return None
+        text = T.strip_wake(text, phrase)
+        if T.is_noise(text) or T.is_dismiss(text, self.cfg["dismiss_phrases"]):
+            return None
+        return text
+
+    def command_session(self, spec: W.WakeSpec, phrase: str, injected: str | None = None) -> None:
+        if not self.wc.commands_allowed:
+            self.report("omawake: commands disabled", self.wc.unsafe_reason, ok=False)
+            return
+        timeout = spec.timeout_s or self.wc.command_timeout_s
+        if spec.command:
+            if self.cfg.get("chime", True):
+                D.chime("wake")
+            self.set_state("running", spec.command)
+            r = K.run(spec.command, timeout, self.dry_run, why=f"wake {spec.model}")
+            self.report(f"omawake: {spec.command}", "done" if r["ok"] else r.get("error", "failed"), r["ok"])
+            return
+        if self.cfg.get("chime", True) and injected is None:
+            D.chime("wake")
+        text = self._listen_phrase(phrase, injected, "Say a command…")
+        if text is None:
+            if self.cfg.get("chime", True):
+                D.chime("bye")
+            return
+        hit = K.match(text, spec.commands, self.wc.match_cutoff)
+        if hit:
+            said, cmd, score = hit
+            self.set_state("running", f"{said} → {cmd}")
+            log.info("voice command %r -> %r (%.2f)", text, said, score)
+            r = K.run(cmd, timeout, self.dry_run, why=f"{spec.model}: {said!r}")
+            self.report(f"omawake: {said}", cmd if r["ok"] else f"{cmd}: {r.get('error')}", r["ok"])
+        elif spec.fallback == "agent":
+            r = K.agent_prompt(text, self.dry_run)
+            self.report("omawake: asked the agent", text if r["ok"] else r.get("error", ""), r["ok"])
+        else:
+            self.report("omawake: no matching command", f"“{text}”", ok=False)
+
+    def agent_prompt_session(self, phrase: str, injected: str | None = None) -> None:
+        if self.cfg.get("chime", True) and injected is None:
+            D.chime("wake")
+        text = self._listen_phrase(phrase, injected, "Listening…")
+        if text is None:
+            if self.cfg.get("chime", True):
+                D.chime("bye")
+            return
+        r = K.agent_prompt(text, self.dry_run)
+        self.report("omawake: new agent prompt", text if r["ok"] else r.get("error", ""), r["ok"])
 
     def _check_abort(self) -> None:
         if self.abort.is_set() or not self.running:
@@ -252,7 +390,7 @@ class Daemon:
         log.info("transcript: %s", {k: res.get(k) for k in ("status", "text", "exit")})
         return str(res.get("text") or "").strip()
 
-    def ask_session(self, injected: str | None = None) -> None:
+    def ask_session(self, injected: str | None = None, phrase: str = "") -> None:
         cfg = dict(self.cfg)
         if injected:
             cfg["conversation"] = False
@@ -282,7 +420,7 @@ class Daemon:
                 if cfg.get("chime", True):
                     D.chime("bye")
                 return
-            text = T.strip_wake(text, self.phrase)
+            text = T.strip_wake(text, phrase or self.phrase)
             if T.is_dismiss(text, cfg["dismiss_phrases"]):
                 log.info("dismissed by %r", text)
                 if cfg.get("chime", True):
@@ -339,6 +477,7 @@ class Daemon:
         cmd = req.get("cmd")
         if cmd == "status":
             return {"ok": True, **self.snapshot(), "score": round(self.last_score, 4),
+                    "scores": {k: round(v, 4) for k, v in self.scores.items()},
                     "detector": self.detector.describe() if self.detector else None}
         if cmd in ("pause", "resume", "toggle"):
             want = {"pause": True, "resume": False}.get(cmd, not self.paused)
@@ -348,26 +487,27 @@ class Daemon:
                 self.set_state("paused", "Paused")
             else:
                 self.need_rebuild = self.detector is None
-                self.set_state("idle" if self.detector else self.state, f"Say “{self.phrase}”" if self.detector else self.message)
+                self.set_state("idle" if self.detector else self.state, self.idle_message() if self.detector else self.message)
             return {"ok": True, "paused": self.paused}
         if cmd == "reload":
-            old = (self.cfg.get("wake_word"), self.cfg.get("audio_target"), json.dumps(self.cfg.get("model_dirs")))
+            old = self._signature()
             self.cfg = C.load_config()
-            new = (self.cfg.get("wake_word"), self.cfg.get("audio_target"), json.dumps(self.cfg.get("model_dirs")))
             self.mic.target = self.cfg.get("audio_target", "")
-            if old != new or self.detector is None:
+            new_wc = W.load(self.cfg)
+            if old != self._signature(new_wc) or self.detector is None:
                 self.need_rebuild = True
-            elif self.detector is not None:
-                self.detector.set_sensitivity(C.SENSITIVITY_SHIFT.get(self.cfg["sensitivity"], 0.0))
-                log.info("detector: %s", self.detector.describe())
+            else:
+                self.wc = new_wc          # actions/commands changed only: no model reload
+                self.rebuild_words_only()
             self.publish()
-            return {"ok": True}
+            return {"ok": True, "errors": new_wc.errors, "unsafe_reason": new_wc.unsafe_reason}
         if cmd == "trigger":
             if self.busy:
                 return {"ok": False, "error": "busy"}
             if self.paused:
                 return {"ok": False, "error": "paused"}
-            self.events.put(("wake", {"wake": "manual", "mode": req.get("mode"), "text": req.get("text")}))
+            self.events.put(("wake", {"wake": req.get("wake") or "manual", "mode": req.get("mode"),
+                                      "text": req.get("text")}))
             return {"ok": True}
         if cmd == "cancel":
             self.abort.set()
@@ -376,6 +516,22 @@ class Daemon:
             self.stop()
             return {"ok": True}
         return {"ok": False, "error": f"unknown command {cmd!r}"}
+
+    def _signature(self, wc: W.WakeConfig | None = None) -> str:
+        """What needs a model reload when it changes."""
+        wc = wc or self.wc
+        words = [(s.model, s.enabled, s.threshold, s.sensitivity, s.cooldown_s) for s in wc.specs]
+        return json.dumps([words, wc.arbitration_ms, wc.settle_ms, self.cfg.get("sensitivity"),
+                           self.cfg.get("audio_target"), self.cfg.get("model_dirs"),
+                           self.cfg.get("wake_word") if wc.source == "legacy" else None])
+
+    def rebuild_words_only(self) -> None:
+        acts = {s.model: s for s in self.wc.specs}
+        for w in self.words:
+            s = acts.get(w["model"])
+            if s:
+                w["action"], w["describe"] = s.action, s.describe()
+        log.info("config reloaded (actions only)")
 
     def control_loop(self) -> None:
         path = C.SOCKET_FILE
@@ -454,6 +610,8 @@ class Daemon:
         return 0
 
 
-def main(verbose: bool = False) -> int:
+def main(verbose: bool = False, dry_run: bool = False) -> int:
     setup_logging(verbose)
-    return Daemon().run()
+    if dry_run:
+        log.warning("dry run: commands and agent prompts are logged, not run")
+    return Daemon(dry_run).run()
