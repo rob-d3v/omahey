@@ -1,6 +1,11 @@
 # omawake
 
-**Say “Hey Omarchy” and talk to your AI agent, hands-free.**
+**Say a wake word and talk to your AI agent, hands-free.**
+
+> Works today with `hey_jarvis`, `alexa` or `hey_mycroft` (openWakeWord,
+> non-commercial licence), or a wake word you make yourself such as
+> `ok_ania`. A free “Hey Omarchy” model (Apache-2.0) is coming soon; it is
+> still training and can't be downloaded yet.
 
 omawake is a wake word for [Omarchy](https://omarchy.org). Say the wake word
 and it opens your Omarchy default agent (Codex, Claude Code, OpenCode, …),
@@ -8,9 +13,10 @@ listens through Omarchy's own dictation (Voxtype), types what you said and
 presses Enter. Then it keeps listening for your follow-up until you say
 “that's all”. There's also a Dictate mode that types at your cursor.
 
-You can run several wake words at once and give each one its own job:
-“Hey Omarchy” asks the agent, “Omarchy” dictates, and “Hey Jarvis, lock
-screen” runs `omarchy-system-lock`. See [Wake words and actions](#wake-words-and-actions).
+You can run several wake words at once and give each one its own job: for
+example “Hey Jarvis” asks the agent, “Ok Ania” dictates, and “Hey Jarvis,
+lock screen” runs `omarchy-system-lock` (once “Hey Omarchy” and “Omarchy”
+ship, they can take those jobs). See [Wake words and actions](#wake-words-and-actions).
 
 > **Unofficial community plugin, not affiliated with Omarchy or 37signals.**
 
@@ -219,7 +225,7 @@ costs well under 0.1 ms; the shared front-end is nearly all of the work.
 
 ## Modes
 
-**Ask (default).** Say “Hey Omarchy”, then your request:
+**Ask (default).** Say your wake word (e.g. “Hey Jarvis”), then your request:
 
 1. A chime plays, the mic icon lights up, and Voxtype starts recording right away.
 2. Your agent window (`omarchy agent`, class `org.omarchy.agent`) opens, or
@@ -243,15 +249,29 @@ omawake conversation on|off
 omawake status | pause | resume | toggle
 omawake test                   # live scores from your mic
 omawake test --selftest        # check the model against its golden files
+omawake test --wav clip.wav    # score a 16 kHz mono WAV (padded with 1.5 s of silence; --no-pad)
 omawake logs [-f | --open]
 ```
 
 These set the single wake word used when there is no `config.toml`.
 Settings live in `~/.config/omawake/config.json`. Other options there:
 `conversation_timeout_s`, `end_silence_ms`, `first_speech_timeout_s`,
-`dismiss_phrases`, `chime`, `submit_delay_ms`, `audio_target` (a PipeWire
-source `node.name`, e.g. from `pactl list short sources`; a sink's
-`.monitor` does not work here) and `model_dirs`.
+`dismiss_phrases`, `chime`, `submit_delay_ms`, `audio_target` (see below)
+and `model_dirs`.
+
+`audio_target` picks what omawake listens to (empty = the default source):
+
+```jsonc
+"audio_target": ""                                   // default mic
+"audio_target": "alsa_input.usb-Blue_Yeti-00.analog-stereo"  // a mic: `pactl list short sources`
+"audio_target": "alsa_output.pci-0000_00_1f.3.analog-stereo.monitor"  // what a sink plays
+"audio_target": "test"                               // a sink name works too
+```
+
+A sink or its `.monitor` is recorded with `stream.capture.sink=true` (plain
+`pw-record --target X.monitor` records silence). Handy for testing with a
+null sink: `pactl load-module module-null-sink sink_name=test`, set
+`"audio_target": "test"`, `omawake reload`, then `paplay -d test clip.wav`.
 
 ## Wake words
 

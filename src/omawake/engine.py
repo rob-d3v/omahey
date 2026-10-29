@@ -18,6 +18,21 @@ log = logging.getLogger("omawake.engine")
 CHUNK = ref.CHUNK          # 1280 samples = 80 ms @ 16 kHz
 FRAME_MS = 80
 
+# `omawake test --wav`: the live detector has seconds of room tone before a
+# wake word (warm-up of the mel/embedding windows and the noise floor) and
+# after it (the score peaks a few frames after the word ends). A tight clip
+# has neither, so it is padded with silence to match real use.
+WAV_LEAD_S = 1.5
+WAV_TAIL_S = 1.5
+
+
+def pad_pcm(pcm: np.ndarray, lead_s: float = WAV_LEAD_S, tail_s: float = WAV_TAIL_S,
+            sample_rate: int = 16000) -> np.ndarray:
+    pcm = np.asarray(pcm)
+    lead = np.zeros(int(round(lead_s * sample_rate)), dtype=pcm.dtype)
+    tail = np.zeros(int(round(tail_s * sample_rate)), dtype=pcm.dtype)
+    return np.concatenate([lead, pcm, tail])
+
 
 def _sidecar_verifier(bundle: Path, man: dict) -> dict | None:
     """`<bundle>.verifier/verifier.json` next to a sealed bundle (Ania Player layout)."""

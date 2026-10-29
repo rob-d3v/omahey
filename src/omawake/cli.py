@@ -261,7 +261,7 @@ def _test_words(cfg: dict, only: str | None):
 
 def cmd_test(a) -> int:
     from .audio import MicStream
-    from .engine import MultiDetector, pcm_chunks
+    from .engine import MultiDetector, pad_pcm, pcm_chunks
     from .arbiter import Arbiter
     from . import wake_core as ref
     cfg = C.load_config()
@@ -287,7 +287,10 @@ def cmd_test(a) -> int:
     det = MultiDetector(words)
     if a.wav:
         from pathlib import Path
-        events = det.run_pcm(ref.read_wav_int16(Path(a.wav)))
+        pcm = ref.read_wav_int16(Path(a.wav))
+        if not a.no_pad:
+            pcm = pad_pcm(pcm)
+        events = det.run_pcm(pcm)
         print(json.dumps({"words": det.names, "file": a.wav, "events": events}))
         return 0 if events else 3
     wc = W.load(cfg)
@@ -457,6 +460,8 @@ def main(argv=None) -> int:
     s.add_argument("--seconds", type=float, default=0)
     s.add_argument("--selftest", action="store_true", help="check the model against its golden files")
     s.add_argument("--wav", help="score a 16 kHz mono WAV file instead of the mic")
+    s.add_argument("--no-pad", action="store_true",
+                   help="with --wav: don't add 1.5 s of silence before and after the clip")
     s.set_defaults(fn=cmd_test)
     s = sub.add_parser("setup", help="first-run setup (idempotent)")
     s.add_argument("--yes", action="store_true")
