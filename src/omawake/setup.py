@@ -4,7 +4,7 @@
 Each step checks first and only acts when something is missing, so running
 it again is always safe. Nothing outside these paths is touched:
   ~/.local/share/omawake/   (venv, downloaded models)
-  ~/.config/omawake/        (config.json)
+  ~/.config/omawake/        (config.json, config.toml: created only on request)
   ~/.config/systemd/user/omawake.service
   ~/.local/bin/omawake      (symlink to the plugin's bin/omawake)
 Voxtype's own config and your keybindings are never edited.
@@ -19,6 +19,7 @@ from pathlib import Path
 
 from . import config as C
 from . import models as M
+from . import wakeconf as W
 
 BIN = C.REPO_DIR / "bin" / "omawake"
 LINK = C.HOME / ".local/bin/omawake"
@@ -74,9 +75,19 @@ def venv_ok() -> bool:
     return r.returncode == 0
 
 
+def active_model(cfg: dict) -> tuple[str, Path] | None:
+    """First enabled, installed wake word (legacy: any installed one)."""
+    wc = W.load(cfg)
+    have = M.installed(cfg)
+    for s in wc.enabled():
+        if s.model in have:
+            return s.model, have[s.model]
+    return M.resolve(cfg) if wc.source == "legacy" else None
+
+
 def readiness() -> dict:
     cfg = C.load_config()
-    found = M.resolve(cfg)
+    found = active_model(cfg)
     return {
         "voxtype": shutil.which("voxtype") is not None,
         "voxtype_running": voxtype_active(),
@@ -164,20 +175,30 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
 
     head("4/6 Wake word model")
     cfg = C.load_config()
-    found = M.resolve(cfg)
-    if not found or found[0] != cfg.get("wake_word"):
-        want = cfg.get("wake_word") or M.catalog().get("default")
-        entry = next((m for m in M.catalog().get("models", []) if m.get("id") == want), None)
-        if entry and entry.get("status") == "available":
+    wc = W.load(cfg)
+    have = M.installed(cfg)
+    for e in wc.errors:
+        warn(f"config.toml: {e}")
+    if wc.unsafe_reason:
+        warn(f"commands disabled: {wc.unsafe_reason}")
+    for spec in wc.enabled():
+        if spec.model in have:
+            continue
+        entry = M.entry(spec.model)
+        if entry and entry.get("status") == "available" and entry.get("kind", "bundle") == "bundle":
             try:
-                M.download(want, log=lambda s: print("  " + s))
+                M.download(spec.model, log=lambda s: print("  " + s))
             except Exception as e:  # noqa: BLE001
                 warn(f"download failed: {e}")
+        elif entry and entry.get("kind") == "upstream-head":
+            warn(f"{spec.model} has a non-commercial licence: omawake models download {spec.model}")
         elif entry:
-            warn(f"“{entry.get('phrase', want)}” is not published yet ({entry.get('status')}).")
-        found = M.resolve(C.load_config())
+            warn(f"“{entry.get('phrase', spec.model)}” is not published yet ({entry.get('status')}).")
+        else:
+            warn(f"{spec.model}: no such model installed")
+    found = active_model(C.load_config())
     if found:
-        ok(f"using wake word {found[0]} ({found[1]})")
+        ok("wake words: " + ", ".join(w["model"] for w in _words()) + f" (first: {found[0]})")
     else:
         warn("no wake word model on this machine yet; omawake will wait for one")
         problems += 1
@@ -217,6 +238,11 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
     if found:
         print(f"Say “{found[0].replace('_', ' ')}” and start talking.")
     return 0 if not problems else 1
+
+
+def _words() -> list[dict]:
+    from .cli import words_offline
+    return [w for w in words_offline(C.load_config()) if w["active"]]
 
 
 def run_uninstall(assume_yes=False, keep_config=False) -> int:

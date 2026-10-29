@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -11,6 +13,7 @@ import time
 
 from . import config as C
 from . import models as M
+from . import wakeconf as W
 
 
 def request(cmd: str, **kw) -> dict | None:
@@ -48,6 +51,13 @@ def cmd_status(a) -> int:
                            and (ready["service"] or out["running"]))
     out["wake_words"] = [{"id": m["id"], "phrase": m["phrase"], "status": m["status"]}
                          for m in M.listing(cfg)]
+    if not live:
+        out["words"] = words_offline(cfg)
+        wc = W.load(cfg)
+        out.update(config_source=wc.source, config_errors=wc.errors[:5],
+                   commands_allowed=wc.commands_allowed, unsafe_reason=wc.unsafe_reason)
+    out["config_file"] = str(W.TOML_FILE)
+    out["config_exists"] = W.TOML_FILE.exists()
     if a.json:
         print(json.dumps(out))
         return 0
@@ -56,6 +66,11 @@ def cmd_status(a) -> int:
           f" · conversation {'on' if out.get('conversation') else 'off'}")
     if live and live.get("detector"):
         print(f"  detector {live['detector']}")
+    for w in out.get("words") or []:
+        print(f"  {'on ' if w['enabled'] else 'off'} {w['model']:14} {w['describe']}"
+              + ("" if w["installed"] else "  (not installed)"))
+    if out.get("unsafe_reason"):
+        print(f"  ! commands disabled: {out['unsafe_reason']}")
     for k, v in ready.items():
         print(f"  {k:16} {v}")
     if not out["setup_ok"]:
@@ -70,9 +85,130 @@ def _set(key: str, value) -> int:
     return 0
 
 
+def words_offline(cfg: dict) -> list[dict]:
+    wc = W.load(cfg)
+    have = M.installed(cfg)
+    if wc.source == "legacy" and wc.specs[0].model not in have:
+        found = M.resolve(cfg)          # same fallback as the daemon
+        if found:
+            wc.specs[0].model = found[0]
+    phrases = {m["id"]: m["phrase"] for m in M.listing(cfg)}
+    return [{"model": s.model, "phrase": s.label or phrases.get(s.model, s.model.replace("_", " ")),
+             "action": s.action, "describe": s.describe(), "enabled": s.enabled,
+             "installed": s.model in have, "active": s.enabled and s.model in have}
+            for s in wc.specs]
+
+
+def cmd_words(a) -> int:
+    cfg = C.load_config()
+    live = request("status")
+    words = (live or {}).get("words") or words_offline(cfg)
+    wc = W.load(cfg)
+    if a.json:
+        print(json.dumps({"words": words, "source": wc.source, "path": wc.path,
+                          "errors": wc.errors, "warnings": wc.warnings,
+                          "commands_allowed": wc.commands_allowed, "unsafe_reason": wc.unsafe_reason,
+                          "specs": [s.to_json() for s in wc.specs]}))
+        return 0
+    src = wc.path if wc.source == "toml" else f"config.json (no {W.TOML_FILE.name} yet: omawake config init)"
+    print(f"Wake words from {src}")
+    scores = (live or {}).get("scores") or {}
+    for w in words:
+        state = "on " if w["enabled"] else "off"
+        miss = "" if w["installed"] else "  (not installed: omawake models)"
+        sc = f"  score {scores[w['model']]:.2f}" if w["model"] in scores else ""
+        print(f"  [{state}] {w['model']:14} “{w['phrase']}” -> {w['describe']}{miss}{sc}")
+    for s in wc.specs:
+        if s.action == "command" and s.commands and a.verbose:
+            print(f"\n  {s.model} phrases:")
+            for ph, c in s.commands.items():
+                print(f"    {ph!r:28} {c}")
+    for e in wc.errors:
+        print(f"  error: {e}")
+    for w in wc.warnings:
+        print(f"  warning: {w}")
+    if wc.unsafe_reason:
+        print(f"  ! commands are disabled: {wc.unsafe_reason}")
+    return 1 if wc.errors else 0
+
+
+def cmd_enable(value: bool):
+    def run(a) -> int:
+        cfg = C.load_config()
+        wc = W.load(cfg)
+        if wc.get(a.model) is None:
+            print(f"'{a.model}' is not in {wc.path if wc.source == 'toml' else 'your config'}."
+                  f" Known: {', '.join(s.model for s in wc.specs) or 'none'}")
+            return 1
+        overlay = dict(cfg.get("word_enabled") or {})
+        overlay[a.model] = value
+        C.save_config({"word_enabled": overlay})
+        r = request("reload")
+        print(f"{a.model} {'enabled' if value else 'disabled'}" + ("" if r else " (daemon not running)"))
+        return 0
+    return run
+
+
+def editor_argv(path) -> list[str]:
+    if shutil.which("omarchy-launch-editor"):
+        return ["omarchy-launch-editor", str(path)]
+    ed = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if ed and shutil.which("xdg-terminal-exec"):
+        return ["xdg-terminal-exec", *__import__("shlex").split(ed), str(path)]
+    return ["xdg-open", str(path)]
+
+
+def cmd_config(a) -> int:
+    path = W.TOML_FILE
+    if a.action == "path":
+        print(path)
+        return 0
+    if a.action in ("init", "edit"):
+        if W.write_template(path):
+            print(f"created {path}")
+        elif a.action == "init":
+            print(f"{path} already exists")
+        if a.action == "edit":
+            subprocess.Popen(editor_argv(path), start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return 0
+    # check
+    wc = W.load(C.load_config(), path)
+    if wc.source == "legacy":
+        print(f"no {path} (using config.json: {wc.specs[0].model} -> {wc.specs[0].action}). Create one: omawake config init")
+        return 0
+    print(f"{path}: {len(wc.specs)} wake word(s), {len(wc.errors)} error(s)")
+    for e in wc.errors:
+        print(f"  error: {e}")
+    for w in wc.warnings:
+        print(f"  warning: {w}")
+    print("  security: " + ("ok, commands may run" if wc.commands_allowed else f"REFUSED: {wc.unsafe_reason}"))
+    r = request("reload")
+    if r is not None:
+        print("  daemon reloaded")
+    return 1 if wc.errors or not wc.commands_allowed else 0
+
+
+def cmd_match(a) -> int:
+    """Dry check of the phrase matcher: which command would this text run?"""
+    from . import commands as K
+    wc = W.load(C.load_config())
+    specs = [s for s in wc.specs if s.action == "command" and s.commands and (not a.model or s.model == a.model)]
+    if not specs:
+        print("no voice-command wake word in the config")
+        return 1
+    for s in specs:
+        hit = K.match(a.text, s.commands, wc.match_cutoff)
+        if hit:
+            print(f"{s.model}: “{a.text}” -> {hit[0]!r} ({hit[2]:.2f}) -> {hit[1]}  (not run)")
+        else:
+            print(f"{s.model}: “{a.text}” -> no match" + (" -> omarchy agent prompt" if s.fallback == "agent" else ""))
+    return 0
+
+
 def cmd_simple(name):
     def run(a) -> int:
-        kw = {k: getattr(a, k) for k in ("mode", "text") if getattr(a, k, None)}
+        kw = {k: getattr(a, k) for k in ("mode", "text", "wake") if getattr(a, k, None)}
         r = request(name, **kw)
         if r is None:
             print("omawake is not running (start it: systemctl --user start omawake, or omawake daemon)")
@@ -82,60 +218,111 @@ def cmd_simple(name):
     return run
 
 
+def _test_words(cfg: dict, only: str | None):
+    """[(name, bundle, shift, threshold, cooldown)] for the enabled words."""
+    from .engine import WordSpec
+    have = M.installed(cfg)
+    wc = W.load(cfg)
+    gshift = C.SENSITIVITY_SHIFT.get(cfg["sensitivity"], 0.0)
+    out, missing = [], []
+    for s in wc.specs:
+        if only and s.model != only:
+            continue
+        if not only and not s.enabled:
+            continue
+        if s.model not in have:
+            missing.append(s.model)
+            continue
+        shift = C.SENSITIVITY_SHIFT.get(s.sensitivity, gshift) if s.sensitivity else gshift
+        out.append(WordSpec(s.model, have[s.model], shift, s.threshold, s.cooldown_s))
+    if only and not out and only in have:
+        out.append(WordSpec(only, have[only], gshift))
+    if not out and not only and wc.source == "legacy":
+        found = M.resolve(cfg)
+        if found:
+            out.append(WordSpec(found[0], found[1], gshift))
+    return out, missing
+
+
 def cmd_test(a) -> int:
     from .audio import MicStream
-    from .engine import Detector, pcm_chunks
+    from .engine import MultiDetector, pcm_chunks
+    from .arbiter import Arbiter
     from . import wake_core as ref
     cfg = C.load_config()
-    if a.wake:
-        cfg["wake_word"] = a.wake
-    found = M.resolve(cfg)
-    if not found:
+    words, missing = _test_words(cfg, a.wake)
+    for m in missing:
+        print(f"(skipping {m}: not installed)")
+    if not words:
         print("No wake word model installed. Run: omawake setup")
         return 1
-    wid, path = found
+    if a.selftest:
+        rc = 0
+        for w in words:
+            if not (w.bundle / "golden_stream.json").is_file():
+                print(f"selftest {w.name}: skipped (bundle has no golden files)")
+                continue
+            fails: list = []
+            ref._check_stream_golden(w.bundle, fails, True)
+            print(f"selftest {w.name}:", "PASS" if not fails else "FAIL")
+            for f in fails[:20]:
+                print("  ", f)
+            rc |= bool(fails)
+        return rc
+    det = MultiDetector(words)
     if a.wav:
         from pathlib import Path
-        det = Detector(path, C.SENSITIVITY_SHIFT.get(cfg["sensitivity"], 0.0))
-        events, _ = det.run_pcm(ref.read_wav_int16(Path(a.wav)))
-        print(json.dumps({"wake": wid, "file": a.wav, "events": events}))
+        events = det.run_pcm(ref.read_wav_int16(Path(a.wav)))
+        print(json.dumps({"words": det.names, "file": a.wav, "events": events}))
         return 0 if events else 3
-    if a.selftest:
-        fails: list = []
-        ref._check_stream_golden(path, fails, True)
-        print("selftest:", "PASS" if not fails else "FAIL")
-        for f in fails[:20]:
-            print("  ", f)
-        return 0 if not fails else 1
-    det = Detector(path, C.SENSITIVITY_SHIFT.get(cfg["sensitivity"], 0.0))
-    print(f"Live scores for {wid} — {det.describe()}")
-    print("Say the wake word. Ctrl+C to stop.\n")
+    wc = W.load(cfg)
+    arb = Arbiter(wc.arbitration_ms / 1000.0, wc.settle_ms / 1000.0)
+    print(f"Live scores — {det.describe()}")
+    print("Say a wake word. Ctrl+C to stop.\n")
+    w_name = max(len(s.name) for s in det.slots)
     mic = MicStream(cfg.get("audio_target", ""))
     stream = mic.open()
-    hits, t0, k = 0, time.monotonic(), 0
+    hits: dict[str, int] = {s.name: 0 for s in det.slots}
+    log_lines: list[str] = []
+    t0, k, first = time.monotonic(), 0, True
+    tty = sys.stdout.isatty()
     try:
         for chunk in pcm_chunks(stream):
             out = det.process(chunk)
-            r, f = out["per_wake"][0], out["features"]
-            sc = r.get("score") or 0.0
+            f = out["features"]
             k += 1
-            bar = "█" * int(sc * 30)
-            vad = f.vad_prob if f.vad_prob is not None else 0.0
-            sys.stdout.write(f"\rscore {sc:5.3f} thr {r['thr_eff']:5.3f} vad {vad:4.2f} "
-                             f"lvl {f.level_db:6.1f} dB |{bar:<30}| wakes {hits}")
-            sys.stdout.flush()
-            if out["event"]:
-                hits += 1
-                ev = out["event"]
-                extra = f" verifier {ev['verifier']:.3f}" if "verifier" in ev else ""
-                print(f"\n  WAKE at {time.monotonic() - t0:6.1f}s  peak {ev['peak']:.3f}{extra}")
+            now = time.monotonic()
+            for ev in out["events"]:
+                arb.offer(ev["wake"], ev["margin"], now, ev)
+            win = arb.poll(now)
+            if win:
+                hits[win["wake"]] += 1
+                extra = f" verifier {win['verifier']:.3f}" if "verifier" in win else ""
+                rival = f" (beat {', '.join(win['rivals'])})" if win["rivals"] else ""
+                log_lines.append(f"WAKE {win['wake']} at {now - t0:6.1f}s peak {win['peak']:.3f}{extra}{rival}")
+                if not tty:
+                    print(log_lines[-1])
+            if tty and k % 2 == 0:
+                vad = f.vad_prob if f.vad_prob is not None else 0.0
+                lines = [f"vad {vad:4.2f}  level {f.level_db:6.1f} dB  {now - t0:6.1f}s"]
+                for r in out["per_wake"]:
+                    sc = r.get("score") or 0.0
+                    bar = "█" * int(sc * 30)
+                    lines.append(f"{r['wake']:<{w_name}} {sc:5.3f} thr {r['thr_eff']:5.3f} |{bar:<30}| wakes {hits[r['wake']]}")
+                lines += log_lines[-3:] + [""] * (3 - len(log_lines[-3:]))
+                if not first:
+                    sys.stdout.write(f"\x1b[{len(lines)}F")
+                sys.stdout.write("".join(f"\x1b[2K{ln}\n" for ln in lines))
+                sys.stdout.flush()
+                first = False
             if a.seconds and k * 0.08 >= a.seconds:
                 break
     except KeyboardInterrupt:
         pass
     finally:
         mic.close()
-    print(f"\n{hits} wake(s) in {time.monotonic() - t0:.0f}s")
+    print(f"\n{sum(hits.values())} wake(s) in {time.monotonic() - t0:.0f}s: "
+          + ", ".join(f"{k} {v}" for k, v in hits.items()))
     return 0
 
 
@@ -143,18 +330,33 @@ def cmd_models(a) -> int:
     cfg = C.load_config()
     if a.action == "download":
         if not a.id:
-            print("usage: omawake models download <id>")
+            print("usage: omawake models download <id> [--accept-license]")
             return 2
-        M.download(a.id)
+        e = M.entry(a.id)
+        accept = a.accept_license
+        if e and e.get("kind") == "upstream-head" and not accept:
+            print(M.license_notice(e))
+            if sys.stdin.isatty():
+                accept = input("Accept this licence and download? [y/N] ").strip().lower() in ("y", "yes")
+            if not accept:
+                print("Not downloaded. Re-run with --accept-license to accept it.")
+                return 1
+        try:
+            M.download(a.id, accept_license=accept)
+        except (PermissionError, RuntimeError, ValueError, OSError) as err:
+            print(f"omawake: {err}")
+            return 1
         request("reload")
         return 0
     items = M.listing(cfg)
     if a.json:
         print(json.dumps(items))
         return 0
+    active = {s.model for s in W.load(cfg).enabled()}
     for m in items:
-        cur = "*" if m["id"] == cfg.get("wake_word") else " "
-        print(f"{cur} {m['id']:16} {m['phrase']!s:20} {m['status']:10} {m.get('path') or ''}")
+        cur = "*" if m["id"] in active else " "
+        lic = m.get("license") or ""
+        print(f"{cur} {m['id']:16} {m['phrase']!s:20} {m['status']:10} {lic:18} {m.get('path') or ''}")
     return 0
 
 
@@ -189,13 +391,16 @@ def main(argv=None) -> int:
 
     s = sub.add_parser("daemon", help="run the wake word daemon in the foreground")
     s.add_argument("-v", "--verbose", action="store_true")
+    s.add_argument("--dry-run", action="store_true", help="log commands and agent prompts instead of running them")
     s = sub.add_parser("status", help="show state and setup checks")
     s.add_argument("--json", action="store_true")
     for name, hlp in (("pause", "stop listening (mic released)"), ("resume", "listen again"),
-                      ("toggle", "pause/resume"), ("cancel", "abort the current turn")):
+                      ("toggle", "pause/resume"), ("cancel", "abort the current turn"),
+                      ("reload", "re-read config.json and config.toml")):
         sub.add_parser(name, help=hlp).set_defaults(fn=cmd_simple(name))
     s = sub.add_parser("trigger", help="act as if the wake word was heard")
-    s.add_argument("--mode", choices=C.MODES)
+    s.add_argument("--mode", choices=W.ACTIONS)
+    s.add_argument("--wake", help="act as this wake word (its action and commands)")
     s.add_argument("--text", help="testing: skip the first recording and send this text")
     s.set_defaults(fn=cmd_simple("trigger"))
     s = sub.add_parser("mode", help="ask | dictate")
@@ -214,9 +419,26 @@ def main(argv=None) -> int:
     s.add_argument("action", nargs="?", choices=("list", "download"), default="list")
     s.add_argument("id", nargs="?")
     s.add_argument("--json", action="store_true")
+    s.add_argument("--accept-license", action="store_true",
+                   help="accept a non-commercial upstream licence (hey_jarvis, alexa, hey_mycroft)")
     s.set_defaults(fn=cmd_models)
-    s = sub.add_parser("test", help="live wake word scores from the mic")
-    s.add_argument("--wake")
+    s = sub.add_parser("words", help="wake words in your config and their actions")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("-v", "--verbose", action="store_true", help="also list voice command phrases")
+    s.set_defaults(fn=cmd_words)
+    for name, val in (("enable", True), ("disable", False)):
+        s = sub.add_parser(name, help=f"turn a wake word {'on' if val else 'off'}")
+        s.add_argument("model")
+        s.set_defaults(fn=cmd_enable(val))
+    s = sub.add_parser("config", help="config.toml: path | init | edit | check")
+    s.add_argument("action", nargs="?", choices=("path", "init", "edit", "check"), default="check")
+    s.set_defaults(fn=cmd_config)
+    s = sub.add_parser("match", help="which voice command would this text run? (nothing is run)")
+    s.add_argument("text")
+    s.add_argument("--model")
+    s.set_defaults(fn=cmd_match)
+    s = sub.add_parser("test", help="live scores for all active wake words")
+    s.add_argument("--wake", help="only this wake word")
     s.add_argument("--seconds", type=float, default=0)
     s.add_argument("--selftest", action="store_true", help="check the model against its golden files")
     s.add_argument("--wav", help="score a 16 kHz mono WAV file instead of the mic")
@@ -238,7 +460,7 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     if a.cmd == "daemon":
         from .daemon import main as dmain
-        return dmain(a.verbose)
+        return dmain(a.verbose, a.dry_run)
     if a.cmd == "status":
         return cmd_status(a)
     if a.cmd == "setup":
