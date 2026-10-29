@@ -58,6 +58,14 @@ def _systemctl(*args) -> subprocess.CompletedProcess:
     return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True)
 
 
+def _run_tool(argv: list[str]) -> None:
+    """Run an Omarchy helper; say so plainly when it is missing (not Omarchy?)."""
+    if not shutil.which(argv[0]):
+        warn(f"{argv[0]} not found: is this Omarchy? Install it yourself and re-run setup")
+        return
+    subprocess.run(argv)
+
+
 def service_active() -> bool:
     return _systemctl("is-active", "--quiet", C.UNIT_NAME).returncode == 0
 
@@ -135,7 +143,7 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
     if not shutil.which("voxtype"):
         warn("Voxtype is not installed.")
         if ui.ask("Install it now with omarchy-voxtype-install? (asks for your password)"):
-            subprocess.run(["omarchy-voxtype-install"])
+            _run_tool(["omarchy-voxtype-install"])
     if shutil.which("voxtype"):
         ok("voxtype found")
         if not voxtype_active():
@@ -161,7 +169,7 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
     if not shutil.which("uv"):
         warn("uv is not installed")
         if ui.ask("Install uv with omarchy-pkg-add uv? (asks for your password)"):
-            subprocess.run(["omarchy-pkg-add", "uv"])
+            _run_tool(["omarchy-pkg-add", "uv"])
     if shutil.which("uv"):
         env = dict(os.environ, UV_PROJECT_ENVIRONMENT=str(C.VENV_DIR))
         r = subprocess.run(["uv", "sync", "--frozen", "--no-dev", "--project", str(C.REPO_DIR)], env=env)
