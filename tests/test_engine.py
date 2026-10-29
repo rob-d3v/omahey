@@ -47,5 +47,35 @@ class GoldenTests(unittest.TestCase):
         self.assertEqual(fails, [])
 
 
+class MultiDetectorTests(unittest.TestCase):
+    """Golden clips through the multi-word path: same events as the
+    single-word detector, and extra heads share the one front-end."""
+
+    def bundle(self):
+        for p in M.installed(C.load_config()).values():
+            if (p / "golden").is_dir():
+                return p
+        self.skipTest("no local bundle with golden clips")
+
+    def test_same_events_as_single(self):
+        b = self.bundle()
+        from omawake import wake_core as ref
+        from omawake.engine import Detector, MultiDetector, WordSpec
+        one = MultiDetector([WordSpec("w", b)])
+        two = MultiDetector([WordSpec("w", b), WordSpec("w2", b, threshold=0.999)])
+        self.assertEqual(len(two.groups), 1)
+        for wav in sorted((b / "golden").glob("*.wav")):
+            pcm = ref.read_wav_int16(wav)
+            ref_ev, _ = Detector(b).run_pcm(pcm)
+            for det in (one, two):
+                det.reset()
+                got = [e for e in det.run_pcm(pcm) if e["wake"] == "w"]
+                self.assertEqual([e["frame"] for e in got], [e["frame"] for e in ref_ev], wav.name)
+
+    def test_frontend_aliases(self):
+        from omawake.engine import FRONTEND_ALIASES
+        self.assertEqual(sorted(set(FRONTEND_ALIASES.values())), ["oww-emb-v1", "oww-mel-v1"])
+
+
 if __name__ == "__main__":
     unittest.main()
