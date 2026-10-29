@@ -23,8 +23,13 @@ def _sidecar_verifier(bundle: Path, man: dict) -> dict | None:
     """`<bundle>.verifier/verifier.json` next to a sealed bundle (Ania Player layout)."""
     if isinstance(man.get("verifier"), dict) and man["verifier"].get("file"):
         return None
+    name = str(man.get("model_name", ""))
+    # Sibling folder (Ania Player layout), or nested inside the bundle (the
+    # aniamodels.shop .zip unpacks it there).
     for cand in (bundle.parent / (bundle.name + ".verifier"),
-                 bundle.parent / (str(man.get("model_name", "")) + ".verifier")):
+                 bundle.parent / (name + ".verifier"),
+                 bundle / (bundle.name + ".verifier"),
+                 bundle / (name + ".verifier")):
         meta = cand / "verifier.json"
         if not meta.is_file():
             continue
