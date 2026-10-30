@@ -88,5 +88,16 @@ class TargetTests(unittest.TestCase):
             self.assertEqual(A.list_sinks(), set())
 
 
+class DonateHintTest(unittest.TestCase):
+    def test_shown_only_while_hey_omarchy_is_missing(self):
+        from omawake import models as M
+        self.assertEqual(M.donate_hint({}), M.DONATE_LINE)
+        self.assertIn("https://aniamodels.shop/omarchy-voice", M.DONATE_LINE)
+        self.assertEqual(M.donate_hint({"hey_jarvis": object()}), M.DONATE_LINE)
+        self.assertIsNone(M.donate_hint({"hey_omarchy": object()}))
+
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -221,6 +221,9 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         print("      your own wake word: https://aniamodels.shop/create-wakeword"
               " (unpack it into ~/.local/share/omawake/models/)")
         problems += 1
+    hint = M.donate_hint(M.installed(C.load_config()))
+    if hint:
+        print(f"    {hint}")
 
     head("5/6 Command line")
     if link:

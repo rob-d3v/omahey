@@ -181,6 +181,7 @@ def cmd_config(a) -> int:
             if not inst:
                 print(f"  {model} is not installed yet: omawake models download {model}")
             print("  “Hey Omarchy” is coming soon; it is in the file, commented out.")
+            print(f"  {M.DONATE_LINE}")
         elif a.action == "init":
             print(f"{path} already exists")
         if a.action == "edit":

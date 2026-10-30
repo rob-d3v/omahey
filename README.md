@@ -6,6 +6,8 @@
 > non-commercial licence), or a wake word you make yourself such as
 > `ok_ania`. A free “Hey Omarchy” model (Apache-2.0) is coming soon; it is
 > still training and can't be downloaded yet.
+>
+> **[Help train “Hey Omarchy” — donate your voice (2 min)](https://aniamodels.shop/omarchy-voice)**
 
 omawake is a wake word for [Omarchy](https://omarchy.org). Say the wake word
 and it opens your Omarchy default agent (Codex, Claude Code, OpenCode, …),

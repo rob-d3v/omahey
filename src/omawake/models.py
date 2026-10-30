@@ -64,6 +64,15 @@ def _bundle_phrase(path: Path) -> str:
         return path.name
 
 
+DONATE_URL = "https://aniamodels.shop/omarchy-voice"
+DONATE_LINE = f"Help train “Hey Omarchy” — donate your voice (2 min): {DONATE_URL}"
+
+
+def donate_hint(have: dict) -> str | None:
+    """The call to action, shown only while the official “Hey Omarchy” model is not installed."""
+    return None if "hey_omarchy" in have else DONATE_LINE
+
+
 def installed(cfg: dict) -> dict[str, Path]:
     """{wake_word_id: bundle_path}; earlier search dirs win."""
     found: dict[str, Path] = {}
