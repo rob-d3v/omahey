@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from . import aniaplayer as A
 from . import config as C
@@ -381,6 +382,18 @@ def cmd_test(a) -> int:
 
 def cmd_models(a) -> int:
     cfg = C.load_config()
+    if a.action == "import":
+        if not a.id:
+            print("usage: omawake models import <pack.zip | folder | manifest.json> [--replace]")
+            return 2
+        try:
+            name, _ = M.import_bundle(Path(a.id), replace=a.replace)
+        except (RuntimeError, OSError) as err:
+            print(f"omawake: {err}")
+            return 1
+        request("reload")
+        print(f"  use it: omawake add {name} -- <command>   or   omawake config edit (action ask / dictate)")
+        return 0
     if a.action == "download":
         if not a.id:
             print("usage: omawake models download <id> [--accept-license]")
@@ -468,9 +481,10 @@ def main(argv=None) -> int:
     s = sub.add_parser("conversation", help="keep listening after a reply: on | off")
     s.add_argument("value", choices=("on", "off"))
     s.set_defaults(fn=lambda a: _set("conversation", a.value == "on"))
-    s = sub.add_parser("models", help="list / download wake words")
-    s.add_argument("action", nargs="?", choices=("list", "download"), default="list")
-    s.add_argument("id", nargs="?")
+    s = sub.add_parser("models", help="list / download / import wake words")
+    s.add_argument("action", nargs="?", choices=("list", "download", "import"), default="list")
+    s.add_argument("id", nargs="?", help="wake word id, or for import: a pack .zip / folder / manifest.json")
+    s.add_argument("--replace", action="store_true", help="import: overwrite an installed wake word")
     s.add_argument("--json", action="store_true")
     s.add_argument("--accept-license", action="store_true",
                    help="accept a non-commercial upstream licence (hey_jarvis, alexa, hey_mycroft)")

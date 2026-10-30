@@ -158,6 +158,19 @@ fallback = "agent"                     # unknown phrase -> omarchy agent prompt 
 | `command` + `command` | runs that one command |
 | `command` + `commands` / `pack` | Voxtype transcribes a short phrase, omawake fuzzy-matches it against your phrase list and runs the match. Nothing is spoken back; the result shows in the widget and as a notification. No match: notification, or `fallback = "agent"` |
 
+**Use a wake word you already have** (one you created or bought on
+aniamodels.shop, the same pack Ania Player imports). Wake words installed in
+Ania Player are found automatically; anything else:
+
+```bash
+omawake models import ~/Downloads/hey-computer.zip   # or the unzipped folder / its manifest.json
+omawake add hey_computer -- omarchy-launch-browser
+```
+
+The pack is checked (safe paths, size, it must load like the daemon loads it)
+before anything is copied, and nothing inside it is ever run. `--replace`
+overwrites an installed one.
+
 **Add a command without editing the file** (`omawake add` appends to
 `config.toml`, checks it, and reloads the daemon):
 

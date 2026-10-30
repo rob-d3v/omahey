@@ -326,3 +326,83 @@ def _download_bundle(entry: dict, log=print) -> Path:
             shutil.move(str(ver), vdest)
     log(f"Installed {model_id} -> {dest}")
     return dest
+
+
+MAX_IMPORT_BYTES = 200 * 1024 * 1024
+
+
+def _safe_extract(archive: Path, out: Path) -> None:
+    """Unpack a .zip / .tar(.gz) refusing absolute paths, `..`, links and
+    archives that expand past MAX_IMPORT_BYTES."""
+    import zipfile
+    out.mkdir(parents=True, exist_ok=True)
+    if zipfile.is_zipfile(archive):
+        with zipfile.ZipFile(archive) as z:
+            total = 0
+            for i in z.infolist():
+                p = Path(i.filename)
+                if p.is_absolute() or ".." in p.parts:
+                    raise RuntimeError(f"unsafe path in archive: {i.filename}")
+                if (i.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise RuntimeError(f"archive contains a link: {i.filename}")
+                total += i.file_size
+                if total > MAX_IMPORT_BYTES:
+                    raise RuntimeError("archive is too large for a wake word")
+            z.extractall(out)
+        return
+    if tarfile.is_tarfile(archive):
+        with tarfile.open(archive) as t:
+            if sum(m.size for m in t.getmembers()) > MAX_IMPORT_BYTES:
+                raise RuntimeError("archive is too large for a wake word")
+            t.extractall(out, filter="data")
+        return
+    raise RuntimeError("not a .zip or .tar.gz wake word pack")
+
+
+def import_bundle(src: Path, log=print, replace: bool = False) -> tuple[str, Path]:
+    """Install a wake word you already have (an Ania pack from aniamodels.shop:
+    .zip / .tar.gz, its folder, or its manifest.json) into MODELS_DIR.
+    The pack is loaded the way the daemon loads it before anything is copied;
+    nothing from it is executed. Returns (wake_word_id, installed_path)."""
+    from . import engine as E
+    src = Path(src).expanduser()
+    if not src.exists():
+        raise RuntimeError(f"no such file: {src}")
+    C.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=str(C.DATA_DIR)) as tmp:
+        if src.is_file() and src.name != "manifest.json":
+            root = Path(tmp) / "x"
+            _safe_extract(src, root)
+        else:
+            root = src.parent if src.name == "manifest.json" else src
+        cands = [p.parent for p in root.rglob("manifest.json")
+                 if not any(part.endswith(".verifier") for part in p.parent.relative_to(root).parts)]
+        cands = [p for p in cands if _bundle_name(p)]
+        if not cands:
+            raise RuntimeError("no wake word manifest.json found (is this an Ania wake word pack?)")
+        pack = min(cands, key=lambda p: len(p.parts))
+        name = _bundle_name(pack)
+        if not name or "/" in name or name.startswith(".") or name.endswith(".verifier"):
+            raise RuntimeError(f"pack has an unusable name: {name!r}")
+        try:
+            E.prepare_bundle(pack)
+        except Exception as e:  # noqa: BLE001 - any load error means "not usable"
+            raise RuntimeError(f"pack does not load: {e}") from e
+        dest = C.MODELS_DIR / name
+        if dest.exists() and not replace:
+            raise RuntimeError(f"'{name}' is already installed ({dest}); use --replace to overwrite it")
+        stage = Path(tmp) / "stage"
+        shutil.copytree(pack, stage / name, symlinks=False)
+        ver = next((v for v in (pack.parent / (pack.name + ".verifier"), pack.parent / (name + ".verifier"))
+                    if v.is_dir()), None)
+        if ver is not None:
+            shutil.copytree(ver, stage / (name + ".verifier"), symlinks=False)
+        if ver is None and (C.MODELS_DIR / (name + ".verifier")).exists():
+            shutil.rmtree(C.MODELS_DIR / (name + ".verifier"))   # it belonged to the old pack
+        for item in sorted(stage.iterdir()):
+            target = C.MODELS_DIR / item.name
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.move(str(item), target)
+    log(f"Installed {name} -> {dest}")
+    return name, dest
