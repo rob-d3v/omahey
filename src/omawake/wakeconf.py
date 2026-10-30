@@ -81,7 +81,7 @@ TEMPLATE = """\
 #
 # action = "ask"           open your Omarchy agent and type what you say next
 # action = "dictate"       type what you say next at the cursor (Voxtype)
-# action = "agent-prompt"  start a new agent with what you say: omarchy agent prompt "<text>"
+# action = "agent-prompt"  start a new agent window and type what you say into it
 # action = "command"       run a command from THIS file (never from speech):
 #                            command  = "omarchy-launch-browser"    (no speech needed)
 #                            commands = { "lock" = "omarchy-system-lock" }   (say a phrase)

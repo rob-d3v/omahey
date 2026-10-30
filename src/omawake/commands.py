@@ -3,8 +3,9 @@
 user's config, and run configured commands safely. Stdlib only.
 
 The transcript only ever *selects* a command; it is never part of one.
-The one place speech reaches a program is `omarchy-agent-prompt <text>`
-(action "agent-prompt" or fallback "agent"), as a single argv element.
+The one place speech reaches a program is a new agent window (action
+"agent-prompt" or fallback "agent"): it is typed there through wtype's stdin,
+never put in a process's arguments, where other accounts could read it.
 """
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ from .wakeconf import parse_command
 
 log = logging.getLogger("omawake.commands")
 
-AGENT_PROMPT = "omarchy-agent-prompt"
 _FILLER = {"please", "can", "could", "would", "you", "the", "a", "an", "my", "me", "for",
            "now", "to", "just", "hey", "ok", "okay", "uh", "um", "and", "thanks", "thank", "turn"}
 _LEAD = ("can you ", "could you ", "would you ", "please ", "i want to ", "i'd like to ")
@@ -131,21 +131,21 @@ def run_argv(argv: list[str], timeout_s: float = 15.0, dry_run: bool = False, wh
             **({} if code == 0 else {"error": f"exit status {code}"})}
 
 
-def agent_prompt(text: str, dry_run: bool = False) -> dict:
-    """`omarchy agent prompt "<text>"`: the transcript is ONE argv element,
-    never parsed by a shell. Detached, because it opens a terminal that
-    lives on after we return."""
-    argv = [AGENT_PROMPT, text]
-    exe = shutil.which(AGENT_PROMPT)
-    if not exe:
-        return {"ok": False, "error": f"{AGENT_PROMPT}: not found", "argv": argv}
-    log.info("agent prompt %r%s", text, " [dry run]" if dry_run else "")
+def agent_prompt(text: str, dry_run: bool = False, launch_timeout_s: float = 12,
+                 ready_delay_ms: int = 1500, submit_delay_ms: int = 350) -> dict:
+    """Open a new `omarchy agent` window and type the transcript into it.
+
+    `omarchy agent prompt "<text>"` would do the same in one call, but the
+    text would then sit in the argv of every process down the chain, which
+    any local account can list. Typing it keeps it in stdin only."""
+    log.info("new agent prompt, %d chars%s", len(text), " [dry run]" if dry_run else "")
     if dry_run:
-        return {"ok": True, "argv": argv, "dry_run": True}
-    with open(C.LOG_FILE, "ab") as logf:
-        try:
-            subprocess.Popen([exe, text], shell=False, stdin=subprocess.DEVNULL, stdout=logf,
-                             stderr=logf, start_new_session=True, cwd=str(C.HOME), close_fds=True)
-        except OSError as e:
-            return {"ok": False, "error": str(e), "argv": argv}
-    return {"ok": True, "argv": argv}
+        return {"ok": True, "dry_run": True}
+    from . import desktop as D
+    try:
+        addr = D.new_agent(launch_timeout_s, ready_delay_ms)
+    except RuntimeError as e:
+        return {"ok": False, "error": str(e)}
+    if not D.type_into(addr, text, submit=True, submit_delay_ms=submit_delay_ms):
+        return {"ok": False, "error": "could not type into the agent window (wtype)"}
+    return {"ok": True}

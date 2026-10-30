@@ -103,19 +103,30 @@ class RunTests(unittest.TestCase):
     def test_dry_run_runs_nothing(self):
         with mock.patch.object(K.subprocess, "Popen") as po:
             r = K.run("true", dry_run=True)
-            a = K.agent_prompt("x; rm -rf ~", dry_run=True) if K.shutil.which(K.AGENT_PROMPT) else None
+            a = K.agent_prompt("x; rm -rf ~", dry_run=True)
         po.assert_not_called()
         self.assertTrue(r["dry_run"])
-        if a:
-            self.assertEqual(a["argv"], [K.AGENT_PROMPT, "x; rm -rf ~"])   # one argv element
+        self.assertTrue(a["dry_run"])
 
-    def test_agent_prompt_is_one_argument(self):
-        with mock.patch.object(K.shutil, "which", return_value="/usr/bin/omarchy-agent-prompt"), \
-                mock.patch.object(K.subprocess, "Popen") as po:
-            K.agent_prompt('open "$(id)" && reboot')
-        args, kw = po.call_args
-        self.assertEqual(args[0], ["/usr/bin/omarchy-agent-prompt", 'open "$(id)" && reboot'])
-        self.assertIs(kw.get("shell"), False)
+    def test_agent_prompt_stays_out_of_argv(self):
+        """The transcript goes to a new agent window through wtype's stdin:
+        never into any process's arguments, where other accounts can read it."""
+        from omawake import desktop as D
+        said = 'my bank pin is 4321'
+        with mock.patch.object(D, "new_agent", return_value="0xabc") as na, \
+                mock.patch.object(D.subprocess, "run") as run, \
+                mock.patch.object(D.subprocess, "Popen") as po, \
+                mock.patch.object(K.subprocess, "Popen") as kpo, \
+                mock.patch.object(D, "active_window", return_value={"address": "0xabc"}):
+            run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+            r = K.agent_prompt(said)
+        self.assertTrue(r["ok"])
+        na.assert_called_once()
+        argvs = [c.args[0] for c in run.call_args_list + po.call_args_list + kpo.call_args_list]
+        self.assertTrue(argvs)
+        for argv in argvs:
+            self.assertFalse(any(said in str(a) for a in argv), argv)
+        self.assertIn(said, [c.kwargs.get("input") for c in run.call_args_list])
 
 
 class UnsafeConfigTests(unittest.TestCase):
@@ -147,3 +158,32 @@ class UnsafeConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LogPrivacyTests(unittest.TestCase):
+    """The log must be private to the user even under a umask of 022."""
+
+    def test_log_is_user_only(self):
+        import logging
+        from omawake import daemon
+        with tempfile.TemporaryDirectory() as td:
+            state = Path(td) / "state"
+            old = os.umask(0o022)
+            root = logging.getLogger()
+            handlers = list(root.handlers)
+            try:
+                with mock.patch.multiple(C, STATE_DIR=state, LOG_FILE=state / "omawake.log",
+                                         CONFIG_DIR=Path(td) / "c", DATA_DIR=Path(td) / "d",
+                                         RUNTIME_DIR=Path(td) / "r"):
+                    daemon.setup_logging()
+                    logging.getLogger("omawake").info("hello")
+                    for h in root.handlers:
+                        h.flush()
+                    self.assertEqual(os.stat(state).st_mode & 0o777, 0o700)
+                    self.assertEqual(os.stat(state / "omawake.log").st_mode & 0o777, 0o600)
+            finally:
+                for h in root.handlers:
+                    if h not in handlers:
+                        h.close()
+                root.handlers[:] = handlers
+                os.umask(old)

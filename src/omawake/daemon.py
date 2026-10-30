@@ -39,7 +39,15 @@ VERSION = "0.2.0"
 
 
 def setup_logging(verbose: bool = False) -> None:
+    # Everything the daemon writes (log, rotated logs, turn files) is private
+    # to the user, whatever the session umask is.
+    os.umask(0o077)
     C.ensure_dirs()
+    for f in C.STATE_DIR.glob(C.LOG_FILE.name + "*"):
+        try:
+            os.chmod(f, 0o600)
+        except OSError:
+            pass
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     root = logging.getLogger()
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -351,14 +359,15 @@ class Daemon:
         if hit:
             said, cmd, score = hit
             self.set_state("running", f"{said} → {cmd}")
-            log.info("voice command %r -> %r (%.2f)", text, said, score)
+            log.info("voice command -> %r (%.2f)", said, score)
+            log.debug("voice command heard %r", text)
             r = K.run(cmd, timeout, self.dry_run, why=f"{spec.model}: {said!r}")
             self.report(f"omawake: {said}", cmd if r["ok"] else f"{cmd}: {r.get('error')}", r["ok"])
         elif spec.fallback == "agent":
-            r = K.agent_prompt(text, self.dry_run)
-            self.report("omawake: asked the agent", text if r["ok"] else r.get("error", ""), r["ok"])
+            r = self._agent_prompt(text)
+            self.report("omawake: asked the agent", "" if r["ok"] else r.get("error", ""), r["ok"])
         else:
-            self.report("omawake: no matching command", f"“{text}”", ok=False)
+            self.report("omawake: no matching command", "Try: omawake match \"<phrase>\"", ok=False)
 
     def agent_prompt_session(self, phrase: str, injected: str | None = None) -> None:
         if self.cfg.get("chime", True) and injected is None:
@@ -368,8 +377,14 @@ class Daemon:
             if self.cfg.get("chime", True):
                 D.chime("bye")
             return
-        r = K.agent_prompt(text, self.dry_run)
-        self.report("omawake: new agent prompt", text if r["ok"] else r.get("error", ""), r["ok"])
+        r = self._agent_prompt(text)
+        self.report("omawake: new agent prompt", "" if r["ok"] else r.get("error", ""), r["ok"])
+
+    def _agent_prompt(self, text: str) -> dict:
+        return K.agent_prompt(text, self.dry_run,
+                              launch_timeout_s=float(self.cfg["agent_launch_timeout_s"]),
+                              ready_delay_ms=int(self.cfg["agent_ready_delay_ms"]),
+                              submit_delay_ms=int(self.cfg["submit_delay_ms"]))
 
     def _check_abort(self) -> None:
         if self.abort.is_set() or not self.running:
@@ -414,8 +429,11 @@ class Daemon:
         self.set_state("transcribing", "Transcribing…")
         res = D.Voxtype.stop_wait(timeout_s=60)
         out.unlink(missing_ok=True)
-        log.info("transcript: %s", {k: res.get(k) for k in ("status", "text", "exit")})
-        return str(res.get("text") or "").strip()
+        text = str(res.get("text") or "").strip()
+        # What was said stays out of the log unless you ask for it (-v).
+        log.info("transcript: status=%s exit=%s, %d chars", res.get("status"), res.get("exit"), len(text))
+        log.debug("transcript text: %r", text)
+        return text
 
     def ask_session(self, injected: str | None = None, phrase: str = "") -> None:
         cfg = dict(self.cfg)
@@ -449,7 +467,7 @@ class Daemon:
                 return
             text = T.strip_wake(text, phrase or self.phrase)
             if T.is_dismiss(text, cfg["dismiss_phrases"]):
-                log.info("dismissed by %r", text)
+                log.info("dismissed")
                 if cfg.get("chime", True):
                     D.chime("bye")
                 return

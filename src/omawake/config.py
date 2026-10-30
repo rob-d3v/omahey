@@ -65,10 +65,12 @@ ANIA_PLAYER_MODELS = HOME / ".local/share/aniaplayer/wakeword"
 def ensure_dirs() -> None:
     for d in (CONFIG_DIR, DATA_DIR, STATE_DIR, RUNTIME_DIR):
         d.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(RUNTIME_DIR, 0o700)
-    except OSError:
-        pass
+    # The state dir holds the log, which names wake words and commands.
+    for d in (RUNTIME_DIR, STATE_DIR):
+        try:
+            os.chmod(d, 0o700)
+        except OSError:
+            pass
 
 
 def load_config() -> dict:

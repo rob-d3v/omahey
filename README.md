@@ -147,14 +147,14 @@ model = "hey_mycroft"
 action = "command"                     # voice commands: wake word, then a phrase
 pack = "omarchy"                       # the built-in command pack (below)
 commands = { "next background" = "omarchy-theme-bg-next", "files" = "omarchy-launch-nautilus" }
-fallback = "agent"                     # unknown phrase -> omarchy agent prompt "<what you said>"
+fallback = "agent"                     # unknown phrase -> a new agent window gets what you said
 ```
 
 | action | what happens after the wake word |
 |---|---|
 | `ask` | Ask mode: the agent window opens, what you say is typed into it, conversation follows |
 | `dictate` | Dictate mode: Voxtype types what you say at the cursor |
-| `agent-prompt` | Voxtype transcribes what you say and runs `omarchy agent prompt "<text>"` (a new agent) |
+| `agent-prompt` | Voxtype transcribes what you say, opens a new `omarchy agent` window and types it there |
 | `command` + `command` | runs that one command |
 | `command` + `commands` / `pack` | Voxtype transcribes a short phrase, omawake fuzzy-matches it against your phrase list and runs the match. Nothing is spoken back; the result shows in the widget and as a notification. No match: notification, or `fallback = "agent"` |
 
@@ -369,8 +369,9 @@ Voice commands run programs, so omawake is strict about where they come from.
   one of the phrases you wrote; transcribed text is never run, never
   passed to a shell, and never added to a command's arguments.
 - The one place speech reaches a program is `agent-prompt` (and
-  `fallback = "agent"`): it runs `omarchy-agent-prompt "<text>"` with the
-  transcript as a single argument. Note that `omarchy agent` starts your
+  `fallback = "agent"`): it opens a new `omarchy agent` window and types the
+  transcript into it through wtype's stdin, so it never appears in a
+  process's arguments. Note that `omarchy agent` starts your
   agent in its unattended mode, so only use these actions if you are
   comfortable with what your agent may do on a spoken prompt.
 - Commands run as an argv list (`shlex.split`, `shell=False`): `;`, `|`,
@@ -400,7 +401,10 @@ Voice commands run programs, so omawake is strict about where they come from.
 - All audio stays on your machine. omawake reads the mic through PipeWire,
   checks it for the wake word in memory, and keeps no audio.
 - Speech-to-text is your local Voxtype. Transcripts go only to the agent
-  window you chose, plus a line in the local log.
+  window you chose. They are not written to the log, nor shown in
+  notifications; the log only records their length (`omawake daemon -v`
+  logs the text, for debugging). The log lives in
+  `~/.local/state/omawake/`, which only you can read (0700, files 0600).
 - The only network access is the model download during setup, over HTTPS
   with a sha256 check.
 - Setup only installs things after you confirm: Voxtype through

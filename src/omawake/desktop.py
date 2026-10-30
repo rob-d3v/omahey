@@ -130,27 +130,40 @@ def ensure_agent(launch_timeout_s: float = 12, ready_delay_ms: int = 1500) -> st
     Returns the window address; raises RuntimeError with a user-facing reason."""
     addr = agent_window()
     if addr is None:
-        if not default_agent():
-            subprocess.Popen(["omarchy-agent", "--pick"], start_new_session=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            raise RuntimeError("No default agent yet. Pick one: omarchy default agent <name>")
-        log.info("launching omarchy agent")
-        with open(C.LOG_FILE, "ab") as logf:
-            proc = subprocess.Popen(["omarchy-agent"], start_new_session=True,
-                                    stdout=logf, stderr=logf, cwd=str(C.HOME))
-        end = time.monotonic() + launch_timeout_s
-        while time.monotonic() < end:
-            addr = agent_window()
-            if addr:
-                break
-            if proc.poll() not in (None, 0):
-                raise RuntimeError("omarchy agent failed to start (see omawake logs)")
-            time.sleep(0.2)
-        if addr is None:
-            raise RuntimeError("The agent window did not appear")
-        time.sleep(ready_delay_ms / 1000.0)    # let the TUI draw its prompt
+        addr = _launch_agent(set(), launch_timeout_s, ready_delay_ms)
     focus(addr)
     return addr
+
+
+def new_agent(launch_timeout_s: float = 12, ready_delay_ms: int = 1500) -> str:
+    """Open a new `omarchy agent` window, even if one is already open, and
+    return its address."""
+    before = {c.get("address") for c in _clients() if c.get("class") == AGENT_CLASS}
+    addr = _launch_agent(before, launch_timeout_s, ready_delay_ms)
+    focus(addr)
+    return addr
+
+
+def _launch_agent(before: set, launch_timeout_s: float, ready_delay_ms: int) -> str:
+    """Start `omarchy agent` and wait for an agent window not in `before`."""
+    if not default_agent():
+        subprocess.Popen(["omarchy-agent", "--pick"], start_new_session=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        raise RuntimeError("No default agent yet. Pick one: omarchy default agent <name>")
+    log.info("launching omarchy agent")
+    with open(C.LOG_FILE, "ab") as logf:
+        proc = subprocess.Popen(["omarchy-agent"], start_new_session=True,
+                                stdout=logf, stderr=logf, cwd=str(C.HOME))
+    end = time.monotonic() + launch_timeout_s
+    while time.monotonic() < end:
+        new = [c for c in _clients() if c.get("class") == AGENT_CLASS and c.get("address") not in before]
+        if new:
+            time.sleep(ready_delay_ms / 1000.0)    # let the TUI draw its prompt
+            return new[0]["address"]
+        if proc.poll() not in (None, 0):
+            raise RuntimeError("omarchy agent failed to start (see omawake logs)")
+        time.sleep(0.2)
+    raise RuntimeError("The agent window did not appear")
 
 
 def type_into(address: str, text: str, submit: bool, submit_delay_ms: int = 350) -> bool:
