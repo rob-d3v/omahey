@@ -158,6 +158,20 @@ fallback = "agent"                     # unknown phrase -> omarchy agent prompt 
 | `command` + `command` | runs that one command |
 | `command` + `commands` / `pack` | Voxtype transcribes a short phrase, omawake fuzzy-matches it against your phrase list and runs the match. Nothing is spoken back; the result shows in the widget and as a notification. No match: notification, or `fallback = "agent"` |
 
+**Add a command without editing the file** (`omawake add` appends to
+`config.toml`, checks it, and reloads the daemon):
+
+```bash
+omawake add hey_jarvis -- omarchy-launch-browser          # wake word alone runs it
+omawake add computer --say "open notes" -- obsidian        # wake word, then a phrase
+omawake add computer --say "deploy" -- ~/bin/deploy.sh staging
+```
+
+Everything after `--` is the command and its arguments. Several wake words
+listen at the same time, each with its own commands. A wake word that already
+does something else (for example `ask`) is left alone; change it with
+`omawake config edit`.
+
 Phrase matching ignores case, punctuation and filler (“could you lock the
 screen please” matches `lock screen`). When two phrases for different
 commands are about equally close, nothing runs. Try it without a mic:

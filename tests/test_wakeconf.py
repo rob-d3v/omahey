@@ -172,5 +172,57 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual((wc.errors, [s.model for s in wc.specs]), ([], ["hey_omarchy"]))
 
 
+class AddCommandTests(unittest.TestCase):
+    BASE = """# my words
+[[wake]]
+model = "hey_omarchy"
+action = "ask"
+"""
+
+    def test_new_word_runs_command(self):
+        new = W.add_command(self.BASE, "hey_jarvis", "omarchy-launch-browser", have_program=ALL)
+        self.assertTrue(new.startswith(self.BASE.rstrip("\n")))
+        wc = W.parse(new, have_program=ALL)
+        self.assertEqual(wc.errors, [])
+        self.assertEqual(wc.get("hey_jarvis").command, "omarchy-launch-browser")
+        self.assertEqual(wc.get("hey_omarchy").action, "ask")
+
+    def test_new_word_with_phrase_then_more_phrases(self):
+        new = W.add_command(self.BASE, "computer", "obsidian", "open notes", have_program=ALL)
+        new = W.add_command(new, "computer", 'notify-send "hi there"', 'say "hi"', have_program=ALL)
+        new = W.add_command(new + "\n[[wake]]\nmodel = \"omarchy\"\naction = \"dictate\"\n",
+                            "computer", "omarchy-system-lock", "lock it", have_program=ALL)
+        wc = W.parse(new, have_program=ALL)
+        self.assertEqual(wc.errors, [])
+        self.assertEqual(wc.get("computer").commands, {
+            "open notes": "obsidian", 'say "hi"': 'notify-send "hi there"', "lock it": "omarchy-system-lock"})
+        self.assertEqual(wc.get("omarchy").action, "dictate")
+
+    def test_phrase_goes_into_existing_pack_block(self):
+        text = self.BASE + '\n[[wake]]\nmodel = "computer"\naction = "command"\npack = "omarchy"\n# trailing note\n'
+        wc = W.parse(W.add_command(text, "computer", "obsidian", "notes", have_program=ALL), have_program=ALL)
+        self.assertEqual(wc.get("computer").commands["notes"], "obsidian")
+        self.assertIn("lock screen", wc.get("computer").commands)
+
+    def test_refusals_leave_nothing_half_done(self):
+        inline = self.BASE + '\n[[wake]]\nmodel = "computer"\naction = "command"\ncommands = { "a" = "true" }\n'
+        cases = [
+            (self.BASE, "hey_omarchy", "true", None),          # already set up, no phrase
+            (self.BASE, "hey_omarchy", "true", "lock"),        # action ask takes no phrases
+            (inline, "computer", "true", "b"),                 # inline table: edit by hand
+            (self.BASE, "x", "", None),                        # nothing to run
+            (self.BASE, "x", "true", "  "),
+        ]
+        for text, model, run, phrase in cases:
+            with self.subTest(model=model, phrase=phrase), self.assertRaises(ValueError):
+                W.add_command(text, model, run, phrase, have_program=ALL)
+        with self.assertRaises(ValueError):
+            W.add_command(self.BASE, "x", "no-such-program", have_program=lambda p: False)
+
+    def test_shell_syntax_is_not_a_shell(self):
+        new = W.add_command(self.BASE, "x", "echo a; rm b", have_program=ALL)
+        self.assertEqual(W.parse_command(W.parse(new, have_program=ALL).get("x").command), ["echo", "a;", "rm", "b"])
+
+
 if __name__ == "__main__":
     unittest.main()

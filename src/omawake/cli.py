@@ -155,6 +155,40 @@ def cmd_enable(value: bool):
     return run
 
 
+def cmd_add(a) -> int:
+    """omawake add <wake word> [--say PHRASE] -- <command ...>"""
+    path = W.TOML_FILE
+    argv = a.run[1:] if a.run[:1] == ["--"] else a.run
+    run = (argv[0] if len(argv) == 1 else __import__("shlex").join(argv)).strip() if argv else ""
+    if not run:
+        print("nothing to run: omawake add <wake word> [--say \"phrase\"] -- <command>")
+        return 2
+    if not path.exists():
+        cfg = C.load_config()
+        order = [m["id"] for m in M.catalog().get("models", [])]
+        model, inst = W.starter_model(M.installed(cfg), A.words_in_use(cfg), order)
+        W.write_template(path, model, inst)
+        print(f"created {path}")
+    unsafe = W.check_file_safe(path)
+    if unsafe:
+        print(f"refused: {unsafe}")
+        return 1
+    try:
+        new = W.add_command(path.read_text(encoding="utf-8"), a.model, run, a.say)
+    except ValueError as e:
+        print(f"not added: {e}")
+        return 1
+    C.atomic_write(path, new)
+    os.chmod(path, 0o600)
+    what = f"“{a.model}”, then “{a.say}”" if a.say else f"“{a.model}”"
+    print(f"added: {what} -> {run}")
+    if a.model not in M.installed(C.load_config()):
+        print(f"  {a.model} is not installed yet: omawake models download {a.model}")
+    r = request("reload")
+    print("  daemon reloaded" if r is not None else "  (daemon not running; it picks this up on start)")
+    return 0
+
+
 def editor_argv(path) -> list[str]:
     if shutil.which("omarchy-launch-editor"):
         return ["omarchy-launch-editor", str(path)]
@@ -449,6 +483,16 @@ def main(argv=None) -> int:
         s = sub.add_parser(name, help=f"turn a wake word {'on' if val else 'off'}")
         s.add_argument("model")
         s.set_defaults(fn=cmd_enable(val))
+    s = sub.add_parser("add", help="run a command when a wake word (and optional phrase) is heard",
+                       description="Adds a Linux command to config.toml. Examples:\n"
+                       "  omawake add hey_jarvis -- omarchy-launch-browser\n"
+                       "  omawake add computer --say \"open notes\" -- obsidian\n"
+                       "  omawake add computer --say \"deploy\" -- ~/bin/deploy.sh staging",
+                       formatter_class=argparse.RawDescriptionHelpFormatter)
+    s.add_argument("model", help="wake word id (see `omawake models`)")
+    s.add_argument("--say", help="phrase to say after the wake word (voice command); omit to run on the wake word alone")
+    s.add_argument("run", nargs="*", help="command and its arguments (put them after --)")
+    s.set_defaults(fn=cmd_add)
     s = sub.add_parser("config", help="config.toml: path | init | edit | check")
     s.add_argument("action", nargs="?", choices=("path", "init", "edit", "check"), default="check")
     s.set_defaults(fn=cmd_config)

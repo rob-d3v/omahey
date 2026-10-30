@@ -21,12 +21,14 @@ Security model (see README "Security"):
     otherwise no command from it ever runs (ask / dictate still work);
   * commands run as an argv list (shlex.split), never through a shell.
 
-omawake never writes this file after creating the starter template; the
-on/off switches in the widget live in config.json (`word_enabled`).
+omawake writes this file only to create the starter template and when you
+run `omawake add` (which appends lines and keeps everything else as is);
+the on/off switches in the widget live in config.json (`word_enabled`).
 """
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -377,3 +379,78 @@ def write_template(path: Path | None = None, model: str = PREFERRED, installed: 
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(render_template(model, installed))
     return True
+
+
+def _toml_str(v: str) -> str:
+    """A TOML basic string (JSON escaping is valid TOML)."""
+    import json
+    return json.dumps(v, ensure_ascii=False)
+
+
+def _block_spans(lines: list[str]) -> list[tuple[int, int, str | None]]:
+    """(start, end, model) for each top-level [[wake]] block in the file."""
+    spans, start = [], None
+    for i, ln in enumerate(lines + ["[end]"]):
+        t = ln.strip()
+        if t.startswith("["):
+            if start is not None:
+                body = "\n".join(lines[start:i])
+                try:
+                    model = tomllib.loads(body.replace("[[wake]]", "", 1)).get("model")
+                except tomllib.TOMLDecodeError:
+                    model = None
+                spans.append((start, i, model))
+                start = None
+            if t == "[[wake]]":
+                start = i
+    return spans
+
+
+def add_command(text: str, model: str, run: str, phrase: str | None = None,
+                have_program=shutil.which) -> str:
+    """config.toml text with one more command: `run` when `model` is heard, or,
+    with `phrase`, when `model` is heard and then that phrase is said.
+    Appends lines only; raises ValueError (nothing written) when the change
+    cannot be made safely by appending."""
+    model, run = model.strip(), run.strip()
+    if not model:
+        raise ValueError("wake word is empty")
+    argv = parse_command(run)
+    if not have_program(argv[0]):
+        raise ValueError(f"program not found: {argv[0]}")
+    phrase = phrase.strip() if phrase is not None else None
+    if phrase is not None and not phrase:
+        raise ValueError("phrase is empty")
+    before = parse(text, have_program)
+    spec = before.get(model)
+    lines = text.splitlines()
+    if spec is None:
+        if any(m == model for _, _, m in _block_spans(lines)):
+            raise ValueError(f"{model} is in config.toml but has errors: omawake config check")
+        block = ["", "[[wake]]", f"model = {_toml_str(model)}", 'action = "command"']
+        if phrase is None:
+            block.append(f"command = {_toml_str(run)}")
+        else:
+            block.append(f"commands.{_toml_str(phrase)} = {_toml_str(run)}")
+        new = "\n".join(lines).rstrip("\n") + "\n" + "\n".join(block) + "\n"
+    else:
+        if phrase is None:
+            raise ValueError(f"{model} is already set up ({spec.describe()}); "
+                             f"add a phrase with --say, or change it: omawake config edit")
+        if spec.action != "command" or spec.command is not None:
+            raise ValueError(f"{model} does not take voice commands ({spec.describe()}): omawake config edit")
+        span = next(sp for sp in _block_spans(lines) if sp[2] == model)
+        if any(re.match(r"\s*commands\s*=", ln) for ln in lines[span[0]:span[1]]):
+            raise ValueError(f"{model} lists its phrases inline (commands = {{ ... }}); add it there: omawake config edit")
+        end = span[1]
+        while end > span[0] + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
+            end -= 1
+        lines.insert(end, f"commands.{_toml_str(phrase)} = {_toml_str(run)}")
+        new = "\n".join(lines) + "\n"
+    after = parse(new, have_program)
+    got = after.get(model)
+    ok = got is not None and len(after.errors) <= len(before.errors) and (
+        got.command == run if phrase is None else got.commands.get(phrase) == run)
+    if not ok:
+        raise ValueError("could not add it without breaking config.toml: omawake config edit")
+    return new
