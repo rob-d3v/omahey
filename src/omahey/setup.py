@@ -46,8 +46,8 @@ class UI:
 def remove_legacy_leftovers() -> list[str]:
     """What omawake left behind that only it used: its venv and its command link."""
     gone = []
-    venv = C.DATA_DIR.parent / C.LEGACY_APP / "venv"
-    if venv.is_dir() and not venv.is_symlink():
+    venv = C.legacy_venv()
+    if venv.is_dir() and not venv.is_symlink() and (venv / "pyvenv.cfg").is_file():
         shutil.rmtree(venv, ignore_errors=True)
         gone.append(str(venv))
         try:
@@ -55,8 +55,8 @@ def remove_legacy_leftovers() -> list[str]:
         except OSError:
             pass
     link = LINK.parent / C.LEGACY_APP
-    # Only our own link: it points at an omawake bin/omawake, now usually gone.
-    if link.is_symlink() and Path(os.readlink(link)).match(f"*{C.LEGACY_APP}*/bin/{C.LEGACY_APP}"):
+    # Only our own link: it points into the old plugin folder, now usually gone.
+    if link.is_symlink() and C.LEGACY_PLUGIN_ID in os.readlink(link):
         link.unlink()
         gone.append(str(link))
     return gone
@@ -258,7 +258,7 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         ok("skipped (--no-link)")
 
     head("6/6 Background service")
-    if C.LEGACY_UNIT_FILE.exists():
+    if C.legacy_unit_is_ours():
         # The same daemon under its old name would hold the mic too.
         _systemctl("disable", "--now", C.LEGACY_UNIT_NAME)
         C.LEGACY_UNIT_FILE.unlink(missing_ok=True)

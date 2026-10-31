@@ -1,6 +1,6 @@
 [project]
 name = "omahey"
-version = "0.3.2"
+version = "0.3.3"
 description = "Hands-free wake word for Omarchy: wake your default AI agent and drive Voxtype dictation."
 readme = "README.md"
 license = "Apache-2.0"

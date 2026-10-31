@@ -25,7 +25,8 @@ ship, they can take those jobs). See [Wake words and actions](#wake-words-and-ac
 > **Renamed from omawake (0.3.0).** Same plugin, new name, so it isn't mixed up with the
 > unrelated Omawake wake-phrase daemon. Already installed? Install omahey, run
 > `omahey setup` (it moves your config and models over and removes the old
-> `omawake.service`), then `omarchy plugin remove io.github.rob-d3v.omawake`.
+> `omawake.service`, only when they were made by this plugin: the unrelated Omawake
+> app uses the same names and is never touched), then `omarchy plugin remove io.github.rob-d3v.omawake`.
 
 <!-- DEMO: replace with a 30 s GIF (docs/demo.gif) -->
 _Demo GIF coming soon._

@@ -85,6 +85,27 @@ if __name__ == "__main__":
 class LegacyMigrationTests(unittest.TestCase):
     """omawake folders move to omahey once, and never over existing omahey ones."""
 
+    def test_the_other_omawake_app_is_left_alone(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from omahey import config as C
+        from omahey import setup as S
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            (t / "d/omawake/venv").mkdir(parents=True)       # no pyvenv.cfg: not our uv venv
+            (t / "bin").mkdir()
+            os.symlink(t / "cargo/bin/omawake", t / "bin/omawake")
+            (t / "u").mkdir()
+            (t / "u/omawake.service").write_text("[Unit]\nDescription=Omawake wake-word daemon\n")
+            with mock.patch.multiple(C, DATA_DIR=t / "d/omahey", LEGACY_UNIT_FILE=t / "u/omawake.service"), \
+                 mock.patch.object(S, "LINK", t / "bin/omahey"):
+                self.assertFalse(C.legacy_unit_is_ours())
+                self.assertEqual(S.remove_legacy_leftovers(), [])
+                self.assertTrue((t / "bin/omawake").is_symlink())
+                self.assertTrue((t / "d/omawake/venv").is_dir())
+
     def test_setup_removes_only_omawakes_own_leftovers(self):
         import os
         import tempfile
@@ -95,6 +116,7 @@ class LegacyMigrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             t = Path(td)
             (t / "d/omawake/venv/bin").mkdir(parents=True)
+            (t / "d/omawake/venv/pyvenv.cfg").write_text("home = /usr/bin\n")
             (t / "bin").mkdir()
             os.symlink(t / "plugins/io.github.rob-d3v.omawake/bin/omawake", t / "bin/omawake")
             os.symlink("/usr/bin/true", t / "bin/other")
@@ -117,7 +139,13 @@ class LegacyMigrationTests(unittest.TestCase):
             (t / "c/omawake/config.toml").write_text("x")
             (t / "d/omawake/models").mkdir(parents=True)
             with mock.patch.multiple(C, CONFIG_DIR=t / "c/omahey", STATE_DIR=t / "s/omahey",
-                                     DATA_DIR=t / "d/omahey", MODELS_DIR=t / "d/omahey/models"):
+                                     DATA_DIR=t / "d/omahey", MODELS_DIR=t / "d/omahey/models",
+                                     LEGACY_UNIT_FILE=t / "u/omawake.service"):
+                # Not provably ours yet (could be the unrelated Omawake app): untouched.
+                self.assertEqual(C.migrate_legacy(), [])
+                self.assertTrue((t / "c/omawake/config.toml").exists())
+                (t / "u").mkdir()
+                (t / "u/omawake.service").write_text("[Unit]\n" + C.LEGACY_UNIT_DESCRIPTION + "\n")
                 moved = C.migrate_legacy()
                 self.assertEqual(len(moved), 2)
                 self.assertEqual((t / "c/omahey/config.toml").read_text(), "x")

@@ -64,15 +64,39 @@ ANIA_PLAYER_MODELS = HOME / ".local/share/aniaplayer/wakeword"
 
 # The plugin was called omawake until 0.3.0. Its folders move over once, the first
 # time omahey runs, unless the user already has omahey folders of their own.
+# An unrelated app (jacob-vincent-mink/omawake) uses the same folder and unit
+# names, so nothing named omawake is touched unless it is provably ours.
 LEGACY_APP = "omawake"
 LEGACY_UNIT_NAME = "omawake.service"
 LEGACY_UNIT_FILE = UNIT_FILE.parent / LEGACY_UNIT_NAME
+LEGACY_PLUGIN_ID = "io.github.rob-d3v.omawake"
+LEGACY_UNIT_DESCRIPTION = "Description=omawake: wake word for Omarchy (unofficial community plugin)"
+
+
+def legacy_venv() -> Path:
+    return DATA_DIR.parent / LEGACY_APP / "venv"
+
+
+def legacy_unit_is_ours() -> bool:
+    try:
+        return LEGACY_UNIT_DESCRIPTION in LEGACY_UNIT_FILE.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def legacy_is_ours() -> bool:
+    """Whether the omawake folders were made by this plugin under its old name:
+    its systemd unit, its uv venv (the other app has none) or its plugin folder."""
+    return (legacy_unit_is_ours() or (legacy_venv() / "pyvenv.cfg").is_file()
+            or (CONFIG_DIR.parent / "omarchy/plugins" / LEGACY_PLUGIN_ID).is_dir())
 
 
 def migrate_legacy() -> list[str]:
     """Move ~/.config/omawake, the downloaded models and the log dir to the omahey
     paths. The old venv is left behind: setup builds a fresh one. Returns what moved."""
     moved = []
+    if not legacy_is_ours():
+        return moved
     pairs = [(CONFIG_DIR.parent / LEGACY_APP, CONFIG_DIR),
              (STATE_DIR.parent / LEGACY_APP, STATE_DIR),
              (DATA_DIR.parent / LEGACY_APP / "models", MODELS_DIR)]
