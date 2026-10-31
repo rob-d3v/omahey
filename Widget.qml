@@ -177,6 +177,7 @@ Panel {
           implicitHeight: Math.max(heroIcon.implicitHeight, heroText.implicitHeight)
 
           Text {
+            textFormat: Text.PlainText
             id: heroIcon
             text: root.glyph()
             color: root.hot ? Commons.Color.accent : root.bar.foreground
@@ -195,6 +196,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
+              textFormat: Text.PlainText
               text: "omahey"
               color: root.bar.foreground
               font.family: root.bar.fontFamily
@@ -202,6 +204,7 @@ Panel {
               font.bold: true
             }
             Text {
+              textFormat: Text.PlainText
               text: root.label().toUpperCase()
               color: root.st === "error" ? Commons.Color.urgent : Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
@@ -215,6 +218,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: text !== "" && (root.st === "error" || root.st === "setup")
           width: parent.width
           wrapMode: Text.Wrap
@@ -238,6 +242,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: text !== "" && root.running && root.st === "idle"
           width: parent.width
           wrapMode: Text.Wrap
@@ -268,6 +273,7 @@ Panel {
               opacity: modelData.installed && !modelData.ania_player ? 1 : 0.5
 
               Text {
+                textFormat: Text.PlainText
                 id: wordIcon
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -284,6 +290,7 @@ Panel {
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
                 Text {
+                  textFormat: Text.PlainText
                   width: parent.width
                   elide: Text.ElideRight
                   text: "“" + wordRow.modelData.phrase + "”"
@@ -292,6 +299,7 @@ Panel {
                   font.pixelSize: Style.font.bodySmall
                 }
                 Text {
+                  textFormat: Text.PlainText
                   width: parent.width
                   elide: Text.ElideRight
                   text: wordRow.modelData.ania_player ? "skipped: Ania Player uses this word"
@@ -314,6 +322,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.unsafeReason !== "" || root.configErrors.length > 0
             width: parent.width
             wrapMode: Text.Wrap
@@ -447,6 +456,7 @@ Panel {
           width: parent.width
           implicitHeight: convSwitch.implicitHeight
           Text {
+            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: "Keep listening after a reply"

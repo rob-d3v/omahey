@@ -82,6 +82,20 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class WidgetTextTests(unittest.TestCase):
+    """Labels come from model manifests, which may be imported packs: a Text with
+    Qt's default AutoText would render <img src=...> and fetch it."""
+
+    def test_every_text_is_plain(self):
+        import re
+        from pathlib import Path
+        qml = (Path(__file__).resolve().parents[1] / "Widget.qml").read_text()
+        blocks = re.findall(r"\bText \{([^{}]*)", qml)
+        self.assertTrue(blocks)
+        for body in blocks:
+            self.assertIn("textFormat: Text.PlainText", body)
+
+
 class LegacyMigrationTests(unittest.TestCase):
     """omawake folders move to omahey once, and never over existing omahey ones."""
 
