@@ -42,6 +42,25 @@ class UI:
         return default if not ans else ans in ("y", "yes")
 
 
+
+def remove_legacy_leftovers() -> list[str]:
+    """What omawake left behind that only it used: its venv and its command link."""
+    gone = []
+    venv = C.DATA_DIR.parent / C.LEGACY_APP / "venv"
+    if venv.is_dir() and not venv.is_symlink():
+        shutil.rmtree(venv, ignore_errors=True)
+        gone.append(str(venv))
+        try:
+            venv.parent.rmdir()  # only when nothing else is in there
+        except OSError:
+            pass
+    link = LINK.parent / C.LEGACY_APP
+    # Only our own link: it points at an omawake bin/omawake, now usually gone.
+    if link.is_symlink() and Path(os.readlink(link)).match(f"*{C.LEGACY_APP}*/bin/{C.LEGACY_APP}"):
+        link.unlink()
+        gone.append(str(link))
+    return gone
+
 def ok(msg):
     print(f"  ✓ {msg}")
 
@@ -245,6 +264,8 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         C.LEGACY_UNIT_FILE.unlink(missing_ok=True)
         _systemctl("daemon-reload")
         ok(f"removed the old {C.LEGACY_UNIT_NAME}")
+    for gone in remove_legacy_leftovers():
+        ok(f"removed the old {gone}")
     if service:
         text = UNIT.format(bin=BIN)
         if not C.UNIT_FILE.exists() or C.UNIT_FILE.read_text() != text:

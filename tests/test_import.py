@@ -85,6 +85,27 @@ if __name__ == "__main__":
 class LegacyMigrationTests(unittest.TestCase):
     """omawake folders move to omahey once, and never over existing omahey ones."""
 
+    def test_setup_removes_only_omawakes_own_leftovers(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from omahey import config as C
+        from omahey import setup as S
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            (t / "d/omawake/venv/bin").mkdir(parents=True)
+            (t / "bin").mkdir()
+            os.symlink(t / "plugins/io.github.rob-d3v.omawake/bin/omawake", t / "bin/omawake")
+            os.symlink("/usr/bin/true", t / "bin/other")
+            with mock.patch.object(C, "DATA_DIR", t / "d/omahey"), \
+                 mock.patch.object(S, "LINK", t / "bin/omahey"):
+                self.assertEqual(len(S.remove_legacy_leftovers()), 2)
+                self.assertFalse((t / "d/omawake").exists())
+                self.assertFalse((t / "bin/omawake").is_symlink())
+                self.assertTrue((t / "bin/other").is_symlink())
+                self.assertEqual(S.remove_legacy_leftovers(), [])
+
     def test_moves_once_and_never_overwrites(self):
         import tempfile
         from pathlib import Path

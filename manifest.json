@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.rob-d3v.omahey",
   "name": "omahey",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "rob-d3v",
   "license": "Apache-2.0",
   "description": "Wake words for Omarchy: each one asks your agent, dictates with Voxtype, or runs a command from your own config. Unofficial community plugin.",
