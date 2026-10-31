@@ -35,7 +35,7 @@ from .audio import MicStream
 from .engine import Endpointer, MultiDetector, WordSpec, pcm_chunks
 
 log = logging.getLogger("omahey")
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 
 def setup_logging(verbose: bool = False) -> None:

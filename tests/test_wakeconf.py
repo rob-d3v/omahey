@@ -153,6 +153,36 @@ class SecurityTests(unittest.TestCase):
         finally:
             os.chmod(self.dir, 0o700)
 
+    def test_group_writable_dir_refused_even_when_ours(self):
+        os.chmod(self.dir, 0o770)
+        try:
+            self.assertIn("group-writable", W.check_file_safe(self.f))
+            self.assertFalse(W.load({}, self.f).commands_allowed)
+        finally:
+            os.chmod(self.dir, 0o700)
+
+    def test_sticky_shared_dir_ok(self):
+        os.chmod(self.dir, 0o1770)
+        try:
+            self.assertEqual(W.check_file_safe(self.f), "")
+        finally:
+            os.chmod(self.dir, 0o700)
+
+    def test_load_checks_the_file_it_read(self):
+        # A path check that says "fine" must not matter: the descriptor that
+        # was read is what gets checked.
+        from unittest import mock
+        os.chmod(self.f, 0o666)
+        real_stat = os.stat
+        def lying_stat(p, *a, **k):
+            st = real_stat(p, *a, **k)
+            if str(p) == str(os.path.realpath(self.f)):
+                return os.stat_result((st.st_mode & ~0o022,) + tuple(st)[1:])
+            return st
+        with mock.patch("os.stat", lying_stat):
+            self.assertEqual(W.check_file_safe(self.f), "")
+            self.assertFalse(W.load({}, self.f).commands_allowed)
+
     def test_symlink_follows_target(self):
         link = Path(self.tmp.name) / "link.toml"
         link.symlink_to(self.f)

@@ -167,30 +167,56 @@ def check_file_safe(path: Path, uid: int | None = None) -> str:
 
     The file (after following symlinks, so dotfile managers keep working)
     must be a regular file owned by `uid` and not group/world-writable, and
-    its directory must be owned by `uid` or root and not writable by others
-    (else someone could swap the file)."""
+    its directory must be owned by `uid` or root and not writable by anyone
+    else (else someone could swap the file)."""
     uid = os.getuid() if uid is None else uid
     try:
         real = Path(os.path.realpath(path))
         st = os.stat(real)
     except OSError as e:
         return f"cannot stat {path}: {e.strerror}"
+    return _file_reason(real, st, uid) or _dir_reason(real, uid)
+
+
+def read_checked(path: Path, uid: int | None = None) -> tuple[str, str]:
+    """(text, unsafe reason) with the checks made on the very file that was
+    read: an fstat of the open descriptor, so the file cannot be swapped
+    between the check and the read."""
+    uid = os.getuid() if uid is None else uid
+    real = Path(os.path.realpath(path))
+    fd = os.open(real, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        reason = _file_reason(real, st, uid)
+        with os.fdopen(fd, "rb", closefd=False) as fh:
+            data = fh.read() if stat.S_ISREG(st.st_mode) else b""
+    finally:
+        os.close(fd)
+    return data.decode("utf-8"), reason or _dir_reason(real, uid)
+
+
+def _file_reason(real: Path, st: os.stat_result, uid: int) -> str:
     if not stat.S_ISREG(st.st_mode):
         return f"{real} is not a regular file"
     if st.st_uid != uid:
         return f"{real} is not owned by you (owner uid {st.st_uid})"
     if st.st_mode & (stat.S_IWOTH | stat.S_IWGRP):
         return f"{real} is writable by other users (mode {stat.S_IMODE(st.st_mode):o}); run: chmod go-w {real}"
+    return ""
+
+
+def _dir_reason(real: Path, uid: int) -> str:
     try:
         dst = os.stat(real.parent)
     except OSError as e:
         return f"cannot stat {real.parent}: {e.strerror}"
     if dst.st_uid not in (uid, 0):
         return f"{real.parent} is not owned by you"
-    if dst.st_mode & stat.S_IWOTH and not dst.st_mode & stat.S_ISVTX:
-        return f"{real.parent} is world-writable"
-    if dst.st_mode & stat.S_IWGRP and dst.st_uid != uid:
-        return f"{real.parent} is group-writable"
+    # A group or world member who can write the folder can rename another
+    # file over config.toml; the sticky bit stops that for files they don't own.
+    if dst.st_mode & (stat.S_IWOTH | stat.S_IWGRP) and not dst.st_mode & stat.S_ISVTX:
+        who = "world" if dst.st_mode & stat.S_IWOTH else "group"
+        return f"{real.parent} is {who}-writable; run: chmod go-w {real.parent}"
     return ""
 
 
@@ -330,11 +356,13 @@ def load(cfg: dict | None = None, path: Path | None = None) -> WakeConfig:
         wc.path = str(path)
     else:
         try:
-            wc = parse(path.read_text(encoding="utf-8"))
+            text, reason = read_checked(path)
+            wc = parse(text)
         except (OSError, UnicodeDecodeError) as e:
             wc = WakeConfig(specs=[], errors=[f"cannot read {path}: {e}"], source="toml")
+            reason = f"cannot read {path}"
         wc.path = str(path)
-        wc.unsafe_reason = check_file_safe(path)
+        wc.unsafe_reason = reason
         wc.commands_allowed = not wc.unsafe_reason
     overlay = cfg.get("word_enabled") or {}
     if isinstance(overlay, dict):

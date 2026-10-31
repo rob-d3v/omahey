@@ -391,9 +391,11 @@ Voice commands run programs, so omahey is strict about where they come from.
 - **Permission check.** omahey refuses to run *any* command from
   `config.toml` unless the file (after following symlinks) is a regular file
   owned by you and not writable by group or others, and its folder is owned
-  by you (or root) and not writable by others. Otherwise the widget and
-  `omahey config check` show why, and `ask` / `dictate` keep working. Fix it
-  with `chmod go-w ~/.config/omahey/config.toml`. `omahey config init`
+  by you (or root) and not writable by group or others (unless it has the
+  sticky bit). The checks run on the file actually read (fstat of the open
+  descriptor), so it can't be swapped between check and read. Otherwise the
+  widget and `omahey config check` show why, and `ask` / `dictate` keep
+  working. Fix it with `chmod go-w ~/.config/omahey ~/.config/omahey/config.toml`. `omahey config init`
   creates the file with mode 0600.
 - omahey only reads `config.toml`, and only creates it when you run
   `config init`/`config edit`. The daemon's control socket is user-only
