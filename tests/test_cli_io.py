@@ -92,7 +92,7 @@ class DonateHintTest(unittest.TestCase):
     def test_shown_only_while_hey_omarchy_is_missing(self):
         from omahey import models as M
         self.assertEqual(M.donate_hint({}), M.DONATE_LINE)
-        self.assertIn("https://aniamodels.shop/omarchy-voice", M.DONATE_LINE)
+        self.assertIn("https://avatar.diatech.solutions/omarchy-voice", M.DONATE_LINE)
         self.assertEqual(M.donate_hint({"hey_jarvis": object()}), M.DONATE_LINE)
         self.assertIsNone(M.donate_hint({"hey_omarchy": object()}))
 

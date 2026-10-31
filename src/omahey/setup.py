@@ -237,7 +237,7 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         print("    Until “Hey Omarchy” is published, pick one of these:")
         print("      omahey models download hey_jarvis && omahey wake hey_jarvis"
               "   # non-commercial licence, shown first")
-        print("      your own wake word: https://aniamodels.shop/create-wakeword"
+        print("      your own wake word: https://avatar.diatech.solutions/create-wakeword"
               " (unpack it into ~/.local/share/omahey/models/)")
         problems += 1
     hint = M.donate_hint(M.installed(C.load_config()))

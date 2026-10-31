@@ -40,7 +40,7 @@ def _sidecar_verifier(bundle: Path, man: dict) -> dict | None:
         return None
     name = str(man.get("model_name", ""))
     # Sibling folder (Ania Player layout), or nested inside the bundle (the
-    # aniamodels.shop .zip unpacks it there).
+    # avatar.diatech.solutions .zip unpacks it there).
     for cand in (bundle.parent / (bundle.name + ".verifier"),
                  bundle.parent / (name + ".verifier"),
                  bundle / (bundle.name + ".verifier"),

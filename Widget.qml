@@ -18,7 +18,7 @@ Panel {
 
   readonly property string cli: decodeURIComponent(String(Qt.resolvedUrl("bin/omahey")).replace(/^file:\/\//, ""))
   readonly property string stateFile: Quickshell.env("XDG_RUNTIME_DIR") + "/omahey/state.json"
-  readonly property string createUrl: "https://aniamodels.shop/create-wakeword"
+  readonly property string createUrl: "https://avatar.diatech.solutions/create-wakeword"
 
   property var live: ({})
   property var info: ({})

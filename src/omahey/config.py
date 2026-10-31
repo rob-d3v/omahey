@@ -13,7 +13,7 @@ from pathlib import Path
 
 APP = "omahey"
 PLUGIN_ID = "io.github.rob-d3v.omahey"
-CREATE_WAKEWORD_URL = "https://aniamodels.shop/create-wakeword"
+CREATE_WAKEWORD_URL = "https://avatar.diatech.solutions/create-wakeword"
 
 HOME = Path.home()
 REPO_DIR = Path(__file__).resolve().parents[2]          # plugin checkout root

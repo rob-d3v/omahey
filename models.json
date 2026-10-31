@@ -37,7 +37,7 @@
       "kind": "user",
       "status": "your own",
       "license": "your own model",
-      "note": "Made at aniamodels.shop/create-wakeword. Drop the bundle folder into ~/.local/share/omahey/models/ (Ania Player's folder is picked up too)."
+      "note": "Made at avatar.diatech.solutions/create-wakeword. Drop the bundle folder into ~/.local/share/omahey/models/ (Ania Player's folder is picked up too)."
     },
     {
       "id": "hey_jarvis",

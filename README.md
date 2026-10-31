@@ -7,7 +7,7 @@
 > `ok_ania`. A free “Hey Omarchy” model (Apache-2.0) is coming soon; it is
 > still training and can't be downloaded yet.
 >
-> **[Help train “Hey Omarchy” — donate your voice (2 min)](https://aniamodels.shop/omarchy-voice)**
+> **[Help train “Hey Omarchy” — donate your voice (2 min)](https://avatar.diatech.solutions/omarchy-voice)**
 
 omahey is a wake word for [Omarchy](https://omarchy.org). Say the wake word
 and it opens your Omarchy default agent (Codex, Claude Code, OpenCode, …),
@@ -165,7 +165,7 @@ fallback = "agent"                     # unknown phrase -> a new agent window ge
 | `command` + `commands` / `pack` | Voxtype transcribes a short phrase, omahey fuzzy-matches it against your phrase list and runs the match. Nothing is spoken back; the result shows in the widget and as a notification. No match: notification, or `fallback = "agent"` |
 
 **Use a wake word you already have** (one you created or bought on
-aniamodels.shop, the same pack Ania Player imports). Wake words installed in
+avatar.diatech.solutions, the same pack Ania Player imports). Wake words installed in
 Ania Player are found automatically; anything else:
 
 ```bash
@@ -361,7 +361,7 @@ The front-end comes from a bundle you already have (bit-identical to
 upstream's), so these heads share the same stream as your other words.
 
 **Create your own wake word.** The widget menu links to
-[aniamodels.shop/create-wakeword](https://aniamodels.shop/create-wakeword).
+[avatar.diatech.solutions/create-wakeword](https://avatar.diatech.solutions/create-wakeword).
 To use the model you get there, unpack the download into
 `~/.local/share/omahey/models/` so that its `manifest.json` ends up at
 `~/.local/share/omahey/models/<id>/manifest.json`, then select it in the
@@ -462,7 +462,7 @@ omarchy plugin validate .
 
 ## Credits
 
-- Wake engine: wake-core from [Ania Player](https://aniamodels.shop), by the same author.
+- Wake engine: wake-core from [Ania Player](https://avatar.diatech.solutions), by the same author.
 - [openWakeWord](https://github.com/dscripka/openWakeWord) front-end models (Apache-2.0).
   The optional `hey_jarvis`, `alexa` and `hey_mycroft` heads are openWakeWord
   pre-trained models (CC BY-NC-SA 4.0), downloaded by you from upstream, not

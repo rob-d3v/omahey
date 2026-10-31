@@ -64,7 +64,7 @@ def _bundle_phrase(path: Path) -> str:
         return path.name
 
 
-DONATE_URL = "https://aniamodels.shop/omarchy-voice"
+DONATE_URL = "https://avatar.diatech.solutions/omarchy-voice"
 DONATE_LINE = f"Help train “Hey Omarchy” — donate your voice (2 min): {DONATE_URL}"
 
 
@@ -360,7 +360,7 @@ def _safe_extract(archive: Path, out: Path) -> None:
 
 
 def import_bundle(src: Path, log=print, replace: bool = False) -> tuple[str, Path]:
-    """Install a wake word you already have (an Ania pack from aniamodels.shop:
+    """Install a wake word you already have (an Ania pack from avatar.diatech.solutions:
     .zip / .tar.gz, its folder, or its manifest.json) into MODELS_DIR.
     The pack is loaded the way the daemon loads it before anything is copied;
     nothing from it is executed. Returns (wake_word_id, installed_path)."""
