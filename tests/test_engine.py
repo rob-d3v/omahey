@@ -4,9 +4,9 @@ with golden files is installed locally."""
 import unittest
 from pathlib import Path
 
-from omawake import config as C
-from omawake import models as M
-from omawake.engine import Endpointer
+from omahey import config as C
+from omahey import models as M
+from omahey.engine import Endpointer
 
 
 class EndpointerTests(unittest.TestCase):
@@ -34,8 +34,8 @@ class GoldenTests(unittest.TestCase):
         found = M.resolve(C.load_config())
         if not found or not (found[1] / "golden").is_dir():
             self.skipTest("no local bundle with golden clips")
-        from omawake import wake_core as ref
-        from omawake.engine import Detector
+        from omahey import wake_core as ref
+        from omahey.engine import Detector
         for wav in sorted((found[1] / "golden").glob("*.wav")):
             ev, _ = Detector(found[1]).run_pcm(ref.read_wav_int16(wav))
             if wav.name.startswith("quieto"):
@@ -59,8 +59,8 @@ class MultiDetectorTests(unittest.TestCase):
 
     def test_same_events_as_single(self):
         b = self.bundle()
-        from omawake import wake_core as ref
-        from omawake.engine import Detector, MultiDetector, WordSpec
+        from omahey import wake_core as ref
+        from omahey.engine import Detector, MultiDetector, WordSpec
         one = MultiDetector([WordSpec("w", b)])
         two = MultiDetector([WordSpec("w", b), WordSpec("w2", b, threshold=0.999)])
         self.assertEqual(len(two.groups), 1)
@@ -73,7 +73,7 @@ class MultiDetectorTests(unittest.TestCase):
                 self.assertEqual([e["frame"] for e in got], [e["frame"] for e in ref_ev], wav.name)
 
     def test_frontend_aliases(self):
-        from omawake.engine import FRONTEND_ALIASES
+        from omahey.engine import FRONTEND_ALIASES
         self.assertEqual(sorted(set(FRONTEND_ALIASES.values())), ["oww-emb-v1", "oww-mel-v1"])
 
 

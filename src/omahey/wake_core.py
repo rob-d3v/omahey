@@ -6,7 +6,7 @@ Extracted unchanged from the Ania Player reference runtime (`bundle_infer.py`,
 wake-core/1.0, by the same author). Only the batch helpers and the CLI were
 dropped; the streaming classes below are byte-for-byte the reference so the
 `golden_stream.json` shipped with each model bundle keeps proving parity
-(`omawake test --selftest`). Inline comments are kept in the original
+(`omahey test --selftest`). Inline comments are kept in the original
 Portuguese on purpose: editing them would break the byte-for-byte rule.
 """
 from __future__ import annotations

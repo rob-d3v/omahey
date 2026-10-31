@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import unittest
 
-from omawake.arbiter import Arbiter
+from omahey.arbiter import Arbiter
 
 
 class ArbiterTests(unittest.TestCase):

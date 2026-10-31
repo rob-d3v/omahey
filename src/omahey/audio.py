@@ -3,7 +3,7 @@
 
 A pipe from pw-record avoids PortAudio/ALSA quirks, shares the source with
 Voxtype and other apps, and shows up as a normal PipeWire stream named
-"omawake" (so the mic indicator and pavucontrol show who is listening).
+"omahey" (so the mic indicator and pavucontrol show who is listening).
 """
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ def resolve_target(target: str, sinks: set[str] | None = None) -> tuple[str, boo
 
 def record_cmd(exe: str, target: str = "", sinks: set[str] | None = None) -> list[str]:
     tgt, monitor = resolve_target(target, sinks)
-    props = ("node.name = \"omawake\" node.description = \"omawake wake word\" "
-             "application.name = \"omawake\"")
+    props = ("node.name = \"omahey\" node.description = \"omahey wake word\" "
+             "application.name = \"omahey\"")
     if monitor:
         props += " stream.capture.sink = true"
     cmd = [exe, "--rate", "16000", "--channels", "1", "--format", "s16", "--raw",

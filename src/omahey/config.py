@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Paths and the user config file (~/.config/omawake/config.json).
+"""Paths and the user config file (~/.config/omahey/config.json).
 
-Everything here is stdlib-only so `omawake status`, `pause`, `setup`, ... run
+Everything here is stdlib-only so `omahey status`, `pause`, `setup`, ... run
 before the virtualenv exists.
 """
 from __future__ import annotations
@@ -11,8 +11,8 @@ import os
 import tempfile
 from pathlib import Path
 
-APP = "omawake"
-PLUGIN_ID = "io.github.rob-d3v.omawake"
+APP = "omahey"
+PLUGIN_ID = "io.github.rob-d3v.omahey"
 CREATE_WAKEWORD_URL = "https://aniamodels.shop/create-wakeword"
 
 HOME = Path.home()
@@ -26,10 +26,10 @@ RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
 CONFIG_FILE = CONFIG_DIR / "config.json"
 VENV_DIR = DATA_DIR / "venv"
 MODELS_DIR = DATA_DIR / "models"
-LOG_FILE = STATE_DIR / "omawake.log"
+LOG_FILE = STATE_DIR / "omahey.log"
 STATE_FILE = RUNTIME_DIR / "state.json"
 SOCKET_FILE = RUNTIME_DIR / "control.sock"
-UNIT_NAME = "omawake.service"
+UNIT_NAME = "omahey.service"
 UNIT_FILE = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config")) / "systemd/user" / UNIT_NAME
 
 MODES = ("ask", "dictate")
@@ -62,7 +62,33 @@ DEFAULTS: dict = {
 ANIA_PLAYER_MODELS = HOME / ".local/share/aniaplayer/wakeword"
 
 
+# The plugin was called omawake until 0.3.0. Its folders move over once, the first
+# time omahey runs, unless the user already has omahey folders of their own.
+LEGACY_APP = "omawake"
+LEGACY_UNIT_NAME = "omawake.service"
+LEGACY_UNIT_FILE = UNIT_FILE.parent / LEGACY_UNIT_NAME
+
+
+def migrate_legacy() -> list[str]:
+    """Move ~/.config/omawake, the downloaded models and the log dir to the omahey
+    paths. The old venv is left behind: setup builds a fresh one. Returns what moved."""
+    moved = []
+    pairs = [(CONFIG_DIR.parent / LEGACY_APP, CONFIG_DIR),
+             (STATE_DIR.parent / LEGACY_APP, STATE_DIR),
+             (DATA_DIR.parent / LEGACY_APP / "models", MODELS_DIR)]
+    for old, new in pairs:
+        if old.is_dir() and not new.exists():
+            try:
+                new.parent.mkdir(parents=True, exist_ok=True)
+                old.rename(new)
+                moved.append(f"{old} -> {new}")
+            except OSError:
+                pass
+    return moved
+
+
 def ensure_dirs() -> None:
+    migrate_legacy()
     for d in (CONFIG_DIR, DATA_DIR, STATE_DIR, RUNTIME_DIR):
         d.mkdir(parents=True, exist_ok=True)
     # The state dir holds the log, which names wake words and commands.

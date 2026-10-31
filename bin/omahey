@@ -1,19 +1,19 @@
 #!/bin/bash
-# omawake launcher: runs the Python package from this plugin checkout.
-# Uses the runtime made by `omawake setup` when it exists, otherwise the
+# omahey launcher: runs the Python package from this plugin checkout.
+# Uses the runtime made by `omahey setup` when it exists, otherwise the
 # system python3 (enough for setup/status/pause/...; not for daemon/test).
 set -euo pipefail
 
 self=$(readlink -f "${BASH_SOURCE[0]}")
 root=$(dirname "$(dirname "$self")")
-venv="${XDG_DATA_HOME:-$HOME/.local/share}/omawake/venv"
+venv="${XDG_DATA_HOME:-$HOME/.local/share}/omahey/venv"
 
 if [[ -x $venv/bin/python ]]; then
   py="$venv/bin/python"
 else
   case "${1:-}" in
     daemon | test)
-      echo "omawake: runtime not installed yet. Run: omawake setup" >&2
+      echo "omahey: runtime not installed yet. Run: omahey setup" >&2
       exit 1
       ;;
   esac
@@ -23,5 +23,5 @@ fi
 export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"
 # Keep bytecode out of the plugin folder: the shell hot-reloads a plugin
 # whenever a file under ~/.config/omarchy/plugins/ changes.
-export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-$HOME/.cache}/omawake/pycache"
-exec "$py" -m omawake "$@"
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-$HOME/.cache}/omahey/pycache"
+exec "$py" -m omahey "$@"

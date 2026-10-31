@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import unittest
 
-from omawake import config as C
-from omawake import text as T
+from omahey import config as C
+from omahey import text as T
 
 
 class TextTests(unittest.TestCase):

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 try:
-    from omawake import daemon as Dm
+    from omahey import daemon as Dm
 except ImportError:                       # numpy / onnxruntime missing
     Dm = None
 

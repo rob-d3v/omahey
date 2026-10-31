@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Ania Player coexistence: which wake words the running player listens for.
 
-Ania Player (aniaplayer.service) has its own wake word engine. If omawake
-listened for the same word, one "Ok Ania" would wake both. So omawake leaves
+Ania Player (aniaplayer.service) has its own wake word engine. If omahey
+listened for the same word, one "Ok Ania" would wake both. So omahey leaves
 every word the player is using to the player.
 
 The player keeps its wake word settings in its voice assistant plugin:
@@ -14,7 +14,7 @@ The player keeps its wake word settings in its voice assistant plugin:
     model_name_2       legacy AND mode second word
     extra_wake_words   OR-mode extra words (ignored when model_name_2 is set)
 
-Opt out with "skip_ania_player_words": false in ~/.config/omawake/config.json.
+Opt out with "skip_ania_player_words": false in ~/.config/omahey/config.json.
 Stdlib only.
 """
 from __future__ import annotations
@@ -94,7 +94,7 @@ def running() -> bool:
 
 
 def words_in_use(cfg: dict, base: Path | None = None, is_running=running) -> set[str]:
-    """Wake words omawake must leave to a running Ania Player."""
+    """Wake words omahey must leave to a running Ania Player."""
     if cfg.get("skip_ania_player_words", True) is False:
         return set()
     words = configured_words(base)

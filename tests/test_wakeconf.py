@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from omawake import wakeconf as W
+from omahey import wakeconf as W
 
 ALL = lambda prog: True  # noqa: E731 - every program "exists"
 
@@ -118,7 +118,7 @@ action = "dictate"
 class SecurityTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.dir = Path(self.tmp.name) / "omawake"
+        self.dir = Path(self.tmp.name) / "omahey"
         self.dir.mkdir(mode=0o700)
         self.f = self.dir / "config.toml"
         self.f.write_text('[[wake]]\nmodel="a"\naction="command"\ncommand="true"\n')

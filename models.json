@@ -1,8 +1,8 @@
 {
   "schema": 2,
   "default": "hey_omarchy",
-  "release_base": "https://github.com/rob-d3v/omawake/releases/download/models-v1/",
-  "note": "kind 'bundle': wake-core tar.gz archive (manifest.json + head .onnx + models/ + optional .verifier/), sha256 filled in when published; entries without status 'available' are never downloaded. kind 'upstream-head': a single openWakeWord head fetched from its upstream release with a pinned sha256 and wrapped into a local bundle; these are NOT redistributed by omawake and need the licence to be accepted at download time.",
+  "release_base": "https://github.com/rob-d3v/omahey/releases/download/models-v1/",
+  "note": "kind 'bundle': wake-core tar.gz archive (manifest.json + head .onnx + models/ + optional .verifier/), sha256 filled in when published; entries without status 'available' are never downloaded. kind 'upstream-head': a single openWakeWord head fetched from its upstream release with a pinned sha256 and wrapped into a local bundle; these are NOT redistributed by omahey and need the licence to be accepted at download time.",
   "frontend": {
     "melspectrogram": {"url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx",
                        "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f", "license": "Apache-2.0"},
@@ -16,7 +16,7 @@
       "language": "en",
       "kind": "bundle",
       "status": "training",
-      "url": "https://github.com/rob-d3v/omawake/releases/download/models-v1/hey_omarchy.tar.gz",
+      "url": "https://github.com/rob-d3v/omahey/releases/download/models-v1/hey_omarchy.tar.gz",
       "sha256": null,
       "license": "Apache-2.0"
     },
@@ -26,7 +26,7 @@
       "language": "en",
       "kind": "bundle",
       "status": "training",
-      "url": "https://github.com/rob-d3v/omawake/releases/download/models-v1/omarchy.tar.gz",
+      "url": "https://github.com/rob-d3v/omahey/releases/download/models-v1/omarchy.tar.gz",
       "sha256": null,
       "license": "Apache-2.0"
     },
@@ -37,7 +37,7 @@
       "kind": "user",
       "status": "your own",
       "license": "your own model",
-      "note": "Made at aniamodels.shop/create-wakeword. Drop the bundle folder into ~/.local/share/omawake/models/ (Ania Player's folder is picked up too)."
+      "note": "Made at aniamodels.shop/create-wakeword. Drop the bundle folder into ~/.local/share/omahey/models/ (Ania Player's folder is picked up too)."
     },
     {
       "id": "hey_jarvis",

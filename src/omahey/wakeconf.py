@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Wake words and their actions: ~/.config/omawake/config.toml. Stdlib only.
+"""Wake words and their actions: ~/.config/omahey/config.toml. Stdlib only.
 
     [[wake]]
     model = "hey_omarchy"
@@ -21,8 +21,8 @@ Security model (see README "Security"):
     otherwise no command from it ever runs (ask / dictate still work);
   * commands run as an argv list (shlex.split), never through a shell.
 
-omawake writes this file only to create the starter template and when you
-run `omawake add` (which appends lines and keeps everything else as is);
+omahey writes this file only to create the starter template and when you
+run `omahey add` (which appends lines and keeps everything else as is);
 the on/off switches in the widget live in config.json (`word_enabled`).
 """
 from __future__ import annotations
@@ -75,9 +75,9 @@ OMARCHY_PACK: dict[str, str] = {
 PACKS = {"omarchy": OMARCHY_PACK}
 
 TEMPLATE = """\
-# omawake wake words. Each [[wake]] block is one wake word and what it does.
-# Reload after editing: the widget does it for you, or run `omawake reload`.
-# Check it: omawake config check      Models: omawake models
+# omahey wake words. Each [[wake]] block is one wake word and what it does.
+# Reload after editing: the widget does it for you, or run `omahey reload`.
+# Check it: omahey config check      Models: omahey models
 #
 # action = "ask"           open your Omarchy agent and type what you say next
 # action = "dictate"       type what you say next at the cursor (Voxtype)
@@ -95,13 +95,13 @@ model = "{model}"{model_note}
 action = "ask"
 
 # Coming soon: the official “Hey Omarchy” model is still training. Once
-# `omawake models` lists hey_omarchy as installed, use it here instead.
+# `omahey models` lists hey_omarchy as installed, use it here instead.
 # [[wake]]
 # model = "hey_omarchy"
 # action = "ask"
 
 # [[wake]]
-# model = "{example}"            # omawake models download {example} (non-commercial licence)
+# model = "{example}"            # omahey models download {example} (non-commercial licence)
 # action = "command"
 # pack = "omarchy"
 # commands = { "next background" = "omarchy-theme-bg-next" }
@@ -363,7 +363,7 @@ def starter_model(have, skip=(), order=()) -> tuple[str, bool]:
 
 def render_template(model: str = PREFERRED, installed: bool = True) -> str:
     note = "" if installed else \
-        f"   # not installed yet: omawake models download {model} (then: omawake reload)"
+        f"   # not installed yet: omahey models download {model} (then: omahey reload)"
     example = "hey_mycroft" if model == FALLBACK else FALLBACK
     return TEMPLATE.replace("{model}", model).replace("{model_note}", note) \
         .replace("{example}", example)
@@ -426,7 +426,7 @@ def add_command(text: str, model: str, run: str, phrase: str | None = None,
     lines = text.splitlines()
     if spec is None:
         if any(m == model for _, _, m in _block_spans(lines)):
-            raise ValueError(f"{model} is in config.toml but has errors: omawake config check")
+            raise ValueError(f"{model} is in config.toml but has errors: omahey config check")
         block = ["", "[[wake]]", f"model = {_toml_str(model)}", 'action = "command"']
         if phrase is None:
             block.append(f"command = {_toml_str(run)}")
@@ -436,12 +436,12 @@ def add_command(text: str, model: str, run: str, phrase: str | None = None,
     else:
         if phrase is None:
             raise ValueError(f"{model} is already set up ({spec.describe()}); "
-                             f"add a phrase with --say, or change it: omawake config edit")
+                             f"add a phrase with --say, or change it: omahey config edit")
         if spec.action != "command" or spec.command is not None:
-            raise ValueError(f"{model} does not take voice commands ({spec.describe()}): omawake config edit")
+            raise ValueError(f"{model} does not take voice commands ({spec.describe()}): omahey config edit")
         span = next(sp for sp in _block_spans(lines) if sp[2] == model)
         if any(re.match(r"\s*commands\s*=", ln) for ln in lines[span[0]:span[1]]):
-            raise ValueError(f"{model} lists its phrases inline (commands = {{ ... }}); add it there: omawake config edit")
+            raise ValueError(f"{model} lists its phrases inline (commands = {{ ... }}); add it there: omahey config edit")
         end = span[1]
         while end > span[0] + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
             end -= 1
@@ -452,5 +452,5 @@ def add_command(text: str, model: str, run: str, phrase: str | None = None,
     ok = got is not None and len(after.errors) <= len(before.errors) and (
         got.command == run if phrase is None else got.commands.get(phrase) == run)
     if not ok:
-        raise ValueError("could not add it without breaking config.toml: omawake config edit")
+        raise ValueError("could not add it without breaking config.toml: omahey config edit")
     return new

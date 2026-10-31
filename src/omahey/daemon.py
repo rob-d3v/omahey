@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The omawake daemon.
+"""The omahey daemon.
 
 Threads:
   audio   pw-record -> shared front-end (mel + embedding + Silero) -> N wake
@@ -8,7 +8,7 @@ Threads:
           command, agent-prompt), drives Voxtype, the agent and commands
   control unix socket for the CLI and the bar widget (JSON lines)
 
-The bar widget reads $XDG_RUNTIME_DIR/omawake/state.json (written on every
+The bar widget reads $XDG_RUNTIME_DIR/omahey/state.json (written on every
 state change) and calls the CLI for actions.
 """
 from __future__ import annotations
@@ -34,8 +34,8 @@ from .arbiter import Arbiter
 from .audio import MicStream
 from .engine import Endpointer, MultiDetector, WordSpec, pcm_chunks
 
-log = logging.getLogger("omawake")
-VERSION = "0.2.0"
+log = logging.getLogger("omahey")
+VERSION = "0.3.0"
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -155,9 +155,9 @@ class Daemon:
             self.wake_id = self.phrase = ""
             shared = [w["phrase"] for w in words if w["ania_player"] and w["enabled"]]
             if shared:
-                why = f"“{shared[0]}” belongs to Ania Player; pick another word: omawake config edit"
+                why = f"“{shared[0]}” belongs to Ania Player; pick another word: omahey config edit"
             elif not any(w["installed"] for w in words):
-                why = "No wake word installed. Run: omawake setup"
+                why = "No wake word installed. Run: omahey setup"
             else:
                 why = "All wake words are turned off"
             self.set_state("setup", why)
@@ -182,7 +182,7 @@ class Daemon:
         return True
 
     def explain_player_words(self, words: list[dict]) -> None:
-        """Log and notify once per word that omawake leaves to Ania Player."""
+        """Log and notify once per word that omahey leaves to Ania Player."""
         for w in words:
             if not w["ania_player"] or w["model"] in self._told_player:
                 continue
@@ -190,9 +190,9 @@ class Daemon:
             log.warning("skipping wake word %r: Ania Player (aniaplayer.service) already listens for it, "
                         "so one phrase would wake both. Set \"skip_ania_player_words\": false in %s "
                         "to listen anyway.", w["model"], C.CONFIG_FILE)
-            D.notify(f"omawake leaves “{w['phrase']}” to Ania Player",
-                     "Ania Player already listens for this wake word, so omawake skips it "
-                     "to avoid waking both. Pick another word: omawake config edit")
+            D.notify(f"omahey leaves “{w['phrase']}” to Ania Player",
+                     "Ania Player already listens for this wake word, so omahey skips it "
+                     "to avoid waking both. Pick another word: omahey config edit")
 
     def watch_player(self) -> None:
         """Re-check Ania Player's words (started, stopped, changed) now and then."""
@@ -281,7 +281,7 @@ class Daemon:
             except Exception as e:  # noqa: BLE001
                 log.exception("session failed")
                 D.chime("error")
-                D.notify("omawake", str(e))
+                D.notify("omahey", str(e))
                 self.set_state("error", str(e))
                 time.sleep(2)
             finally:
@@ -338,7 +338,7 @@ class Daemon:
 
     def command_session(self, spec: W.WakeSpec, phrase: str, injected: str | None = None) -> None:
         if not self.wc.commands_allowed:
-            self.report("omawake: commands disabled", self.wc.unsafe_reason, ok=False)
+            self.report("omahey: commands disabled", self.wc.unsafe_reason, ok=False)
             return
         timeout = spec.timeout_s or self.wc.command_timeout_s
         if spec.command:
@@ -346,7 +346,7 @@ class Daemon:
                 D.chime("wake")
             self.set_state("running", spec.command)
             r = K.run(spec.command, timeout, self.dry_run, why=f"wake {spec.model}")
-            self.report(f"omawake: {spec.command}", "done" if r["ok"] else r.get("error", "failed"), r["ok"])
+            self.report(f"omahey: {spec.command}", "done" if r["ok"] else r.get("error", "failed"), r["ok"])
             return
         if self.cfg.get("chime", True) and injected is None:
             D.chime("wake")
@@ -362,12 +362,12 @@ class Daemon:
             log.info("voice command -> %r (%.2f)", said, score)
             log.debug("voice command heard %r", text)
             r = K.run(cmd, timeout, self.dry_run, why=f"{spec.model}: {said!r}")
-            self.report(f"omawake: {said}", cmd if r["ok"] else f"{cmd}: {r.get('error')}", r["ok"])
+            self.report(f"omahey: {said}", cmd if r["ok"] else f"{cmd}: {r.get('error')}", r["ok"])
         elif spec.fallback == "agent":
             r = self._agent_prompt(text)
-            self.report("omawake: asked the agent", "" if r["ok"] else r.get("error", ""), r["ok"])
+            self.report("omahey: asked the agent", "" if r["ok"] else r.get("error", ""), r["ok"])
         else:
-            self.report("omawake: no matching command", "Try: omawake match \"<phrase>\"", ok=False)
+            self.report("omahey: no matching command", "Try: omahey match \"<phrase>\"", ok=False)
 
     def agent_prompt_session(self, phrase: str, injected: str | None = None) -> None:
         if self.cfg.get("chime", True) and injected is None:
@@ -378,7 +378,7 @@ class Daemon:
                 D.chime("bye")
             return
         r = self._agent_prompt(text)
-        self.report("omawake: new agent prompt", "" if r["ok"] else r.get("error", ""), r["ok"])
+        self.report("omahey: new agent prompt", "" if r["ok"] else r.get("error", ""), r["ok"])
 
     def _agent_prompt(self, text: str) -> dict:
         return K.agent_prompt(text, self.dry_run,
@@ -413,7 +413,7 @@ class Daemon:
         out = C.RUNTIME_DIR / f"turn-{self.turn_no % 4}.txt"
         out.unlink(missing_ok=True)
         if D.Voxtype.state() in ("missing", "stopped"):
-            raise RuntimeError("Voxtype is not running. Run: omawake setup")
+            raise RuntimeError("Voxtype is not running. Run: omahey setup")
         if not D.Voxtype.start(transcript_file=out):
             raise RuntimeError("voxtype record start failed")
         self.set_state(state, message)
@@ -499,7 +499,7 @@ class Daemon:
         if self.cfg.get("chime", True):
             D.chime("wake")
         if D.Voxtype.state() in ("missing", "stopped"):
-            raise RuntimeError("Voxtype is not running. Run: omawake setup")
+            raise RuntimeError("Voxtype is not running. Run: omahey setup")
         if not D.Voxtype.start(type_out=True):
             raise RuntimeError("voxtype record start failed")
         self.set_state("listening", "Dictating at the cursor…")
@@ -627,7 +627,7 @@ class Daemon:
                 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 s.connect(str(C.SOCKET_FILE))
                 s.close()
-                log.error("omawake is already running")
+                log.error("omahey is already running")
                 return 1
             except OSError:
                 pass
@@ -640,7 +640,7 @@ class Daemon:
             self.set_state("paused", "Paused")
         for t in threads:
             t.start()
-        log.info("omawake %s started (pid %d)", VERSION, os.getpid())
+        log.info("omahey %s started (pid %d)", VERSION, os.getpid())
         next_watch = time.monotonic() + 20
         while self.running:
             time.sleep(0.3)
@@ -656,7 +656,7 @@ class Daemon:
             self.state, self.message = "stopped", "Not running"
         self.mic_open = False
         self.publish()
-        log.info("omawake stopped")
+        log.info("omahey stopped")
         return 0
 
 

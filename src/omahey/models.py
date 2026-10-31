@@ -4,7 +4,7 @@
 Catalogue kinds: "bundle" (a wake-core archive from this repo's releases),
 "upstream-head" (one openWakeWord head fetched from its upstream release,
 pinned by sha256, wrapped into a local bundle after the user accepts its
-licence; omawake never redistributes it) and "user" (your own model).
+licence; omahey never redistributes it) and "user" (your own model).
 
 A bundle is a folder with `manifest.json` (wake-core format), the head
 `.onnx`, and `models/` (melspectrogram, embedding, silero_vad). An optional
@@ -162,7 +162,7 @@ def entry(model_id: str) -> dict | None:
 
 
 def license_notice(e: dict) -> str:
-    return (f"“{e.get('phrase', e['id'])}” is not distributed by omawake. It is downloaded from its\n"
+    return (f"“{e.get('phrase', e['id'])}” is not distributed by omahey. It is downloaded from its\n"
             f"upstream project: {e.get('attribution', e.get('url'))}.\n"
             f"Licence: {e.get('license')} ({e.get('license_url', '')}).\n"
             "Non-commercial use only, with attribution; share-alike applies to derivatives.")
@@ -251,7 +251,7 @@ def make_head_bundle(head: Path, dest: Path, model_id: str, phrase: str, thresho
         (dest / "LICENSE-NOTICE.txt").write_text(
             f"{info.get('attribution', '')}\nSource: {info.get('url', '')}\n"
             f"Licence: {info['license']} {info.get('license_url', '')}\n"
-            "Downloaded by the user from upstream; not redistributed by omawake.\n"
+            "Downloaded by the user from upstream; not redistributed by omahey.\n"
             "Front-end models: openWakeWord (Apache-2.0). Silero VAD: MIT.\n", encoding="utf-8")
     return dest
 

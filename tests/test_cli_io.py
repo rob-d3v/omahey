@@ -8,19 +8,19 @@ from pathlib import Path
 
 import numpy as np
 
-from omawake import audio as A
-from omawake.engine import WAV_LEAD_S, WAV_TAIL_S, pad_pcm
+from omahey import audio as A
+from omahey.engine import WAV_LEAD_S, WAV_TAIL_S, pad_pcm
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 
 
 class BrokenPipeTests(unittest.TestCase):
-    """`omawake status | head -1`: the reader leaves before we finish writing."""
+    """`omahey status | head -1`: the reader leaves before we finish writing."""
 
     def _closed_pipe(self, *args):
         code = ("import os, runpy, sys; r, w = os.pipe(); os.close(r); os.dup2(w, 1); "
-                f"sys.argv = ['omawake', *{list(args)!r}]; "
-                "runpy.run_module('omawake', run_name='__main__')")
+                f"sys.argv = ['omahey', *{list(args)!r}]; "
+                "runpy.run_module('omahey', run_name='__main__')")
         env = dict(os.environ, PYTHONPATH=SRC)
         return subprocess.run([sys.executable, "-c", code], env=env, capture_output=True,
                               text=True, timeout=60)
@@ -65,7 +65,7 @@ class TargetTests(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--target") + 1], "foo")
         props = cmd[cmd.index("-P") + 1]
         self.assertIn("stream.capture.sink = true", props)
-        self.assertIn('node.name = "omawake"', props)
+        self.assertIn('node.name = "omahey"', props)
         self.assertEqual(cmd[-1], "-")
 
     def test_bare_sink_name(self):
@@ -90,7 +90,7 @@ class TargetTests(unittest.TestCase):
 
 class DonateHintTest(unittest.TestCase):
     def test_shown_only_while_hey_omarchy_is_missing(self):
-        from omawake import models as M
+        from omahey import models as M
         self.assertEqual(M.donate_hint({}), M.DONATE_LINE)
         self.assertIn("https://aniamodels.shop/omarchy-voice", M.DONATE_LINE)
         self.assertEqual(M.donate_hint({"hey_jarvis": object()}), M.DONATE_LINE)

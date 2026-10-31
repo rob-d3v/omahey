@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from omawake import commands as K
-from omawake import config as C
-from omawake import wakeconf as W
+from omahey import commands as K
+from omahey import config as C
+from omahey import wakeconf as W
 
 TABLE = {
     "lock screen": "omarchy-system-lock", "lock": "omarchy-system-lock",
@@ -92,7 +92,7 @@ class RunTests(unittest.TestCase):
         self.assertLess(time.monotonic() - t, 5)
 
     def test_missing_program(self):
-        r = K.run("definitely-not-a-program-omawake")
+        r = K.run("definitely-not-a-program-omahey")
         self.assertFalse(r["ok"])
         self.assertIn("not found", r["error"])
 
@@ -111,7 +111,7 @@ class RunTests(unittest.TestCase):
     def test_agent_prompt_stays_out_of_argv(self):
         """The transcript goes to a new agent window through wtype's stdin:
         never into any process's arguments, where other accounts can read it."""
-        from omawake import desktop as D
+        from omahey import desktop as D
         said = 'my bank pin is 4321'
         with mock.patch.object(D, "new_agent", return_value="0xabc") as na, \
                 mock.patch.object(D.subprocess, "run") as run, \
@@ -134,7 +134,7 @@ class UnsafeConfigTests(unittest.TestCase):
 
     def test_daemon_refuses(self):
         try:
-            from omawake import daemon as Dm
+            from omahey import daemon as Dm
         except ImportError:
             self.skipTest("needs the venv")
         with tempfile.TemporaryDirectory() as d:
@@ -165,22 +165,22 @@ class LogPrivacyTests(unittest.TestCase):
 
     def test_log_is_user_only(self):
         import logging
-        from omawake import daemon
+        from omahey import daemon
         with tempfile.TemporaryDirectory() as td:
             state = Path(td) / "state"
             old = os.umask(0o022)
             root = logging.getLogger()
             handlers = list(root.handlers)
             try:
-                with mock.patch.multiple(C, STATE_DIR=state, LOG_FILE=state / "omawake.log",
+                with mock.patch.multiple(C, STATE_DIR=state, LOG_FILE=state / "omahey.log",
                                          CONFIG_DIR=Path(td) / "c", DATA_DIR=Path(td) / "d",
                                          RUNTIME_DIR=Path(td) / "r"):
                     daemon.setup_logging()
-                    logging.getLogger("omawake").info("hello")
+                    logging.getLogger("omahey").info("hello")
                     for h in root.handlers:
                         h.flush()
                     self.assertEqual(os.stat(state).st_mode & 0o777, 0o700)
-                    self.assertEqual(os.stat(state / "omawake.log").st_mode & 0o777, 0o600)
+                    self.assertEqual(os.stat(state / "omahey.log").st_mode & 0o777, 0o600)
             finally:
                 for h in root.handlers:
                     if h not in handlers:

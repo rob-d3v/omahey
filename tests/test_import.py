@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""omawake models import: packs you already own (Ania .zip / folder / manifest.json)."""
+"""omahey models import: packs you already own (Ania .zip / folder / manifest.json)."""
 import json
 import tempfile
 import unittest
@@ -7,9 +7,9 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from omawake import config as C
-from omawake import engine as E
-from omawake import models as M
+from omahey import config as C
+from omahey import engine as E
+from omahey import models as M
 
 
 def make_pack(d: Path, name="hey_test", verifier=False) -> Path:
@@ -80,3 +80,26 @@ class ImportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LegacyMigrationTests(unittest.TestCase):
+    """omawake folders move to omahey once, and never over existing omahey ones."""
+
+    def test_moves_once_and_never_overwrites(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        from omahey import config as C
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td)
+            (t / "c/omawake").mkdir(parents=True)
+            (t / "c/omawake/config.toml").write_text("x")
+            (t / "d/omawake/models").mkdir(parents=True)
+            with mock.patch.multiple(C, CONFIG_DIR=t / "c/omahey", STATE_DIR=t / "s/omahey",
+                                     DATA_DIR=t / "d/omahey", MODELS_DIR=t / "d/omahey/models"):
+                moved = C.migrate_legacy()
+                self.assertEqual(len(moved), 2)
+                self.assertEqual((t / "c/omahey/config.toml").read_text(), "x")
+                self.assertTrue((t / "d/omahey/models").is_dir())
+                (t / "c/omawake").mkdir()
+                self.assertEqual(C.migrate_legacy(), [])

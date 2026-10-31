@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import config as C
 
-log = logging.getLogger("omawake.desktop")
+log = logging.getLogger("omahey.desktop")
 
 AGENT_CLASS = "org.omarchy.agent"     # fixed app-id used by `omarchy agent`
 
@@ -161,7 +161,7 @@ def _launch_agent(before: set, launch_timeout_s: float, ready_delay_ms: int) -> 
             time.sleep(ready_delay_ms / 1000.0)    # let the TUI draw its prompt
             return new[0]["address"]
         if proc.poll() not in (None, 0):
-            raise RuntimeError("omarchy agent failed to start (see omawake logs)")
+            raise RuntimeError("omarchy agent failed to start (see omahey logs)")
         time.sleep(0.2)
     raise RuntimeError("The agent window did not appear")
 
@@ -222,7 +222,7 @@ def chime(name: str) -> None:
 
 def notify(title: str, body: str = "", urgent: bool = False) -> None:
     if shutil.which("notify-send"):
-        cmd = ["notify-send", "-a", "omawake", "-i", "audio-input-microphone"]
+        cmd = ["notify-send", "-a", "omahey", "-i", "audio-input-microphone"]
         if urgent:
             cmd += ["-u", "critical"]
         subprocess.Popen(cmd + [title, body], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

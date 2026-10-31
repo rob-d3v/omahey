@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""omawake command line. Only `daemon` and `test` need the venv (numpy/onnx)."""
+"""omahey command line. Only `daemon` and `test` need the venv (numpy/onnx)."""
 from __future__ import annotations
 
 import argparse
@@ -67,7 +67,7 @@ def cmd_status(a) -> int:
     if a.json:
         print(json.dumps(out))
         return 0
-    print(f"omawake: {out['state']}" + (f" — {out.get('message')}" if out.get("message") else ""))
+    print(f"omahey: {out['state']}" + (f" — {out.get('message')}" if out.get("message") else ""))
     ww = out.get("wake_word") or "none"
     if out.get("configured_wake_word"):
         ww += f" (configured {out['configured_wake_word']} is not usable here)"
@@ -82,7 +82,7 @@ def cmd_status(a) -> int:
     for k, v in ready.items():
         print(f"  {k:16} {v}")
     if not out["setup_ok"]:
-        print("  -> run: omawake setup")
+        print("  -> run: omahey setup")
     return 0
 
 
@@ -102,7 +102,7 @@ def word_note(w: dict) -> str:
     if w.get("ania_player"):
         return "  (skipped: Ania Player uses this word)"
     if not w["installed"]:
-        return "  (not installed: omawake models)"
+        return "  (not installed: omahey models)"
     return ""
 
 
@@ -117,7 +117,7 @@ def cmd_words(a) -> int:
                           "commands_allowed": wc.commands_allowed, "unsafe_reason": wc.unsafe_reason,
                           "specs": [s.to_json() for s in wc.specs]}))
         return 0
-    src = wc.path if wc.source == "toml" else f"config.json (no {W.TOML_FILE.name} yet: omawake config init)"
+    src = wc.path if wc.source == "toml" else f"config.json (no {W.TOML_FILE.name} yet: omahey config init)"
     print(f"Wake words from {src}")
     scores = (live or {}).get("scores") or {}
     for w in words:
@@ -157,12 +157,12 @@ def cmd_enable(value: bool):
 
 
 def cmd_add(a) -> int:
-    """omawake add <wake word> [--say PHRASE] -- <command ...>"""
+    """omahey add <wake word> [--say PHRASE] -- <command ...>"""
     path = W.TOML_FILE
     argv = a.run[1:] if a.run[:1] == ["--"] else a.run
     run = (argv[0] if len(argv) == 1 else __import__("shlex").join(argv)).strip() if argv else ""
     if not run:
-        print("nothing to run: omawake add <wake word> [--say \"phrase\"] -- <command>")
+        print("nothing to run: omahey add <wake word> [--say \"phrase\"] -- <command>")
         return 2
     if not path.exists():
         cfg = C.load_config()
@@ -184,7 +184,7 @@ def cmd_add(a) -> int:
     what = f"“{a.model}”, then “{a.say}”" if a.say else f"“{a.model}”"
     print(f"added: {what} -> {run}")
     if a.model not in M.installed(C.load_config()):
-        print(f"  {a.model} is not installed yet: omawake models download {a.model}")
+        print(f"  {a.model} is not installed yet: omahey models download {a.model}")
     r = request("reload")
     print("  daemon reloaded" if r is not None else "  (daemon not running; it picks this up on start)")
     return 0
@@ -214,7 +214,7 @@ def cmd_config(a) -> int:
             if skip:
                 print(f"  skipped {', '.join(sorted(skip))}: Ania Player already listens for it")
             if not inst:
-                print(f"  {model} is not installed yet: omawake models download {model}")
+                print(f"  {model} is not installed yet: omahey models download {model}")
             print("  “Hey Omarchy” is coming soon; it is in the file, commented out.")
             print(f"  {M.DONATE_LINE}")
         elif a.action == "init":
@@ -226,7 +226,7 @@ def cmd_config(a) -> int:
     # check
     wc = W.load(C.load_config(), path)
     if wc.source == "legacy":
-        print(f"no {path} (using config.json: {wc.specs[0].model} -> {wc.specs[0].action}). Create one: omawake config init")
+        print(f"no {path} (using config.json: {wc.specs[0].model} -> {wc.specs[0].action}). Create one: omahey config init")
         return 0
     print(f"{path}: {len(wc.specs)} wake word(s), {len(wc.errors)} error(s)")
     for e in wc.errors:
@@ -262,7 +262,7 @@ def cmd_simple(name):
         kw = {k: getattr(a, k) for k in ("mode", "text", "wake") if getattr(a, k, None)}
         r = request(name, **kw)
         if r is None:
-            print("omawake is not running (start it: systemctl --user start omawake, or omawake daemon)")
+            print("omahey is not running (start it: systemctl --user start omahey, or omahey daemon)")
             return 1
         print(json.dumps(r))
         return 0 if r.get("ok") else 1
@@ -305,7 +305,7 @@ def cmd_test(a) -> int:
     for m in missing:
         print(f"(skipping {m}: not installed)")
     if not words:
-        print("No wake word model installed. Run: omawake setup")
+        print("No wake word model installed. Run: omahey setup")
         return 1
     if a.selftest:
         rc = 0
@@ -384,19 +384,19 @@ def cmd_models(a) -> int:
     cfg = C.load_config()
     if a.action == "import":
         if not a.id:
-            print("usage: omawake models import <pack.zip | folder | manifest.json> [--replace]")
+            print("usage: omahey models import <pack.zip | folder | manifest.json> [--replace]")
             return 2
         try:
             name, _ = M.import_bundle(Path(a.id), replace=a.replace)
         except (RuntimeError, OSError) as err:
-            print(f"omawake: {err}")
+            print(f"omahey: {err}")
             return 1
         request("reload")
-        print(f"  use it: omawake add {name} -- <command>   or   omawake config edit (action ask / dictate)")
+        print(f"  use it: omahey add {name} -- <command>   or   omahey config edit (action ask / dictate)")
         return 0
     if a.action == "download":
         if not a.id:
-            print("usage: omawake models download <id> [--accept-license]")
+            print("usage: omahey models download <id> [--accept-license]")
             return 2
         e = M.entry(a.id)
         accept = a.accept_license
@@ -410,7 +410,7 @@ def cmd_models(a) -> int:
         try:
             M.download(a.id, accept_license=accept)
         except (PermissionError, RuntimeError, ValueError, OSError) as err:
-            print(f"omawake: {err}")
+            print(f"omahey: {err}")
             return 1
         request("reload")
         return 0
@@ -429,8 +429,8 @@ def cmd_models(a) -> int:
 def cmd_logs(a) -> int:
     if a.open:
         cmd = f"tail -n 200 -F '{C.LOG_FILE}'"
-        subprocess.Popen(["uwsm-app", "--", "xdg-terminal-exec", "--app-id=org.omarchy.omawake-logs",
-                          "--title=omawake logs", "-e", "bash", "-c", cmd], start_new_session=True,
+        subprocess.Popen(["uwsm-app", "--", "xdg-terminal-exec", "--app-id=org.omarchy.omahey-logs",
+                          "--title=omahey logs", "-e", "bash", "-c", cmd], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return 0
     if a.follow:
@@ -452,7 +452,7 @@ def cmd_open_setup(a) -> int:
 
 def main(argv=None) -> int:
     sys.stdout.reconfigure(line_buffering=True)
-    p = argparse.ArgumentParser(prog="omawake", description="Wake word for Omarchy (unofficial community plugin)")
+    p = argparse.ArgumentParser(prog="omahey", description="Wake word for Omarchy (unofficial community plugin)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("daemon", help="run the wake word daemon in the foreground")
@@ -475,7 +475,7 @@ def main(argv=None) -> int:
     s = sub.add_parser("sensitivity", help="low | normal | high")
     s.add_argument("value", choices=C.SENSITIVITIES)
     s.set_defaults(fn=lambda a: _set("sensitivity", a.value))
-    s = sub.add_parser("wake", help="choose the wake word (see `omawake models`)")
+    s = sub.add_parser("wake", help="choose the wake word (see `omahey models`)")
     s.add_argument("value")
     s.set_defaults(fn=lambda a: _set("wake_word", a.value))
     s = sub.add_parser("conversation", help="keep listening after a reply: on | off")
@@ -499,11 +499,11 @@ def main(argv=None) -> int:
         s.set_defaults(fn=cmd_enable(val))
     s = sub.add_parser("add", help="run a command when a wake word (and optional phrase) is heard",
                        description="Adds a Linux command to config.toml. Examples:\n"
-                       "  omawake add hey_jarvis -- omarchy-launch-browser\n"
-                       "  omawake add computer --say \"open notes\" -- obsidian\n"
-                       "  omawake add computer --say \"deploy\" -- ~/bin/deploy.sh staging",
+                       "  omahey add hey_jarvis -- omarchy-launch-browser\n"
+                       "  omahey add computer --say \"open notes\" -- obsidian\n"
+                       "  omahey add computer --say \"deploy\" -- ~/bin/deploy.sh staging",
                        formatter_class=argparse.RawDescriptionHelpFormatter)
-    s.add_argument("model", help="wake word id (see `omawake models`)")
+    s.add_argument("model", help="wake word id (see `omahey models`)")
     s.add_argument("--say", help="phrase to say after the wake word (voice command); omit to run on the wake word alone")
     s.add_argument("run", nargs="*", help="command and its arguments (put them after --)")
     s.set_defaults(fn=cmd_add)

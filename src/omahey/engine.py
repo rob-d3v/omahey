@@ -13,12 +13,12 @@ import numpy as np
 from . import models as M
 from . import wake_core as ref
 
-log = logging.getLogger("omawake.engine")
+log = logging.getLogger("omahey.engine")
 
 CHUNK = ref.CHUNK          # 1280 samples = 80 ms @ 16 kHz
 FRAME_MS = 80
 
-# `omawake test --wav`: the live detector has seconds of room tone before a
+# `omahey test --wav`: the live detector has seconds of room tone before a
 # wake word (warm-up of the mel/embedding windows and the noise floor) and
 # after it (the score peaks a few frames after the word ends). A tight clip
 # has neither, so it is padded with silence to match real use.

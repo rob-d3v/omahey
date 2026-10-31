@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-"""`omawake setup` / `omawake uninstall`: idempotent first run. Stdlib only.
+"""`omahey setup` / `omahey uninstall`: idempotent first run. Stdlib only.
 
 Each step checks first and only acts when something is missing, so running
 it again is always safe. Nothing outside these paths is touched:
-  ~/.local/share/omawake/   (venv, downloaded models)
-  ~/.config/omawake/        (config.json, config.toml: created only on request)
-  ~/.config/systemd/user/omawake.service
-  ~/.local/bin/omawake      (symlink to the plugin's bin/omawake)
+  ~/.local/share/omahey/   (venv, downloaded models)
+  ~/.config/omahey/        (config.json, config.toml: created only on request)
+  ~/.config/systemd/user/omahey.service
+  ~/.local/bin/omahey      (symlink to the plugin's bin/omahey)
 Voxtype's own config and your keybindings are never edited.
 """
 from __future__ import annotations
@@ -21,8 +21,8 @@ from . import config as C
 from . import models as M
 from . import wakeconf as W
 
-BIN = C.REPO_DIR / "bin" / "omawake"
-LINK = C.HOME / ".local/bin/omawake"
+BIN = C.REPO_DIR / "bin" / "omahey"
+LINK = C.HOME / ".local/bin/omahey"
 
 
 class UI:
@@ -117,8 +117,8 @@ def _default_agent() -> str:
 
 
 UNIT = """[Unit]
-Description=omawake: wake word for Omarchy (unofficial community plugin)
-Documentation=https://github.com/rob-d3v/omawake
+Description=omahey: wake word for Omarchy (unofficial community plugin)
+Documentation=https://github.com/rob-d3v/omahey
 PartOf=graphical-session.target
 After=graphical-session.target pipewire.service voxtype.service
 
@@ -137,7 +137,7 @@ WantedBy=graphical-session.target
 def run_setup(assume_yes=False, service=True, link=True) -> int:
     ui = UI(assume_yes)
     C.ensure_dirs()
-    print("omawake setup (safe to run again)")
+    print("omahey setup (safe to run again)")
     problems = 0
 
     head("1/6 Voxtype (Omarchy dictation)")
@@ -156,7 +156,7 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         else:
             problems += 1
     else:
-        warn("omawake needs Voxtype for speech-to-text; re-run setup after installing it")
+        warn("omahey needs Voxtype for speech-to-text; re-run setup after installing it")
         problems += 1
 
     head("2/6 Default agent")
@@ -200,7 +200,7 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
             except Exception as e:  # noqa: BLE001
                 warn(f"download failed: {e}")
         elif entry and entry.get("kind") == "upstream-head":
-            warn(f"{spec.model} has a non-commercial licence: omawake models download {spec.model}")
+            warn(f"{spec.model} has a non-commercial licence: omahey models download {spec.model}")
         elif entry:
             warn(f"“{entry.get('phrase', spec.model)}” is not published yet ({entry.get('status')}).")
         else:
@@ -208,18 +208,18 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
     from .cli import words_offline
     for w in words_offline(C.load_config()):
         if w.get("ania_player"):
-            warn(f"{w['model']}: Ania Player already listens for this word, so omawake skips it"
-                 " (pick another one: omawake config edit)")
+            warn(f"{w['model']}: Ania Player already listens for this word, so omahey skips it"
+                 " (pick another one: omahey config edit)")
     found = active_model(C.load_config())
     if found:
         ok("wake words: " + ", ".join(w["model"] for w in _words()) + f" (first: {found[0]})")
     else:
-        warn("no wake word model on this machine yet; omawake will wait for one")
+        warn("no wake word model on this machine yet; omahey will wait for one")
         print("    Until “Hey Omarchy” is published, pick one of these:")
-        print("      omawake models download hey_jarvis && omawake wake hey_jarvis"
+        print("      omahey models download hey_jarvis && omahey wake hey_jarvis"
               "   # non-commercial licence, shown first")
         print("      your own wake word: https://aniamodels.shop/create-wakeword"
-              " (unpack it into ~/.local/share/omawake/models/)")
+              " (unpack it into ~/.local/share/omahey/models/)")
         problems += 1
     hint = M.donate_hint(M.installed(C.load_config()))
     if hint:
@@ -239,6 +239,12 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
         ok("skipped (--no-link)")
 
     head("6/6 Background service")
+    if C.LEGACY_UNIT_FILE.exists():
+        # The same daemon under its old name would hold the mic too.
+        _systemctl("disable", "--now", C.LEGACY_UNIT_NAME)
+        C.LEGACY_UNIT_FILE.unlink(missing_ok=True)
+        _systemctl("daemon-reload")
+        ok(f"removed the old {C.LEGACY_UNIT_NAME}")
     if service:
         text = UNIT.format(bin=BIN)
         if not C.UNIT_FILE.exists() or C.UNIT_FILE.read_text() != text:
@@ -249,12 +255,12 @@ def run_setup(assume_yes=False, service=True, link=True) -> int:
             _systemctl("enable", C.UNIT_NAME)
             _systemctl("restart", C.UNIT_NAME)
             if service_active():
-                ok("omawake.service running")
+                ok("omahey.service running")
             else:
-                warn("omawake.service did not start: journalctl --user -u omawake")
+                warn("omahey.service did not start: journalctl --user -u omahey")
                 problems += 1
     else:
-        ok("skipped (--no-service); run `omawake daemon` yourself")
+        ok("skipped (--no-service); run `omahey daemon` yourself")
 
     print("\nDone." if not problems else f"\nFinished with {problems} item(s) to fix (see ! above).")
     if found:
@@ -269,7 +275,7 @@ def _words() -> list[dict]:
 
 def run_uninstall(assume_yes=False, keep_config=False) -> int:
     ui = UI(assume_yes)
-    print("omawake uninstall")
+    print("omahey uninstall")
     if C.UNIT_FILE.exists() or service_active():
         _systemctl("disable", "--now", C.UNIT_NAME)
         C.UNIT_FILE.unlink(missing_ok=True)

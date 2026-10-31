@@ -5,19 +5,19 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// omawake bar widget (unofficial community plugin).
+// omahey bar widget (unofficial community plugin).
 //
-// The daemon writes $XDG_RUNTIME_DIR/omawake/state.json on every state
+// The daemon writes $XDG_RUNTIME_DIR/omahey/state.json on every state
 // change; this widget watches that file and runs the plugin's own
-// `bin/omawake` CLI for every action. Left click pauses/resumes (or opens
+// `bin/omahey` CLI for every action. Left click pauses/resumes (or opens
 // setup when it is not finished), right click opens the panel.
 Panel {
   id: root
-  moduleName: "io.github.rob-d3v.omawake"
-  ipcTarget: "io.github.rob-d3v.omawake"
+  moduleName: "io.github.rob-d3v.omahey"
+  ipcTarget: "io.github.rob-d3v.omahey"
 
-  readonly property string cli: decodeURIComponent(String(Qt.resolvedUrl("bin/omawake")).replace(/^file:\/\//, ""))
-  readonly property string stateFile: Quickshell.env("XDG_RUNTIME_DIR") + "/omawake/state.json"
+  readonly property string cli: decodeURIComponent(String(Qt.resolvedUrl("bin/omahey")).replace(/^file:\/\//, ""))
+  readonly property string stateFile: Quickshell.env("XDG_RUNTIME_DIR") + "/omahey/state.json"
   readonly property string createUrl: "https://aniamodels.shop/create-wakeword"
 
   property var live: ({})
@@ -77,7 +77,7 @@ Panel {
 
   function primary() {
     if (!setupOk) Quickshell.execDetached([root.cli, "open-setup"])
-    else if (!running) Quickshell.execDetached(["systemctl", "--user", "start", "omawake.service"])
+    else if (!running) Quickshell.execDetached(["systemctl", "--user", "start", "omahey.service"])
     else run(["toggle"])
   }
 
@@ -133,7 +133,7 @@ Panel {
     active: root.hot
     dimmed: root.st === "paused" || root.st === "stopped"
     foreground: root.st === "error" ? Commons.Color.urgent : (root.bar ? root.bar.barForeground : Commons.Color.foreground)
-    tooltipText: "omawake: " + root.label() + (root.setupOk ? "" : " (click to finish setup)")
+    tooltipText: "omahey: " + root.label() + (root.setupOk ? "" : " (click to finish setup)")
     onPressed: function(b) {
       if (b === Qt.RightButton || b === Qt.MiddleButton) root.toggle()
       else root.primary()
@@ -195,7 +195,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
-              text: "omawake"
+              text: "omahey"
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.title
@@ -295,7 +295,7 @@ Panel {
                   width: parent.width
                   elide: Text.ElideRight
                   text: wordRow.modelData.ania_player ? "skipped: Ania Player uses this word"
-                        : wordRow.modelData.installed ? wordRow.modelData.describe : "not installed: omawake models"
+                        : wordRow.modelData.installed ? wordRow.modelData.describe : "not installed: omahey models"
                   color: root.bar.foreground
                   opacity: 0.6
                   font.family: root.bar.fontFamily

@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from omawake import aniaplayer as A
-from omawake import cli
-from omawake import models as M
-from omawake import wakeconf as W
+from omahey import aniaplayer as A
+from omahey import cli
+from omahey import models as M
+from omahey import wakeconf as W
 
 HAVE = {"ok_ania": Path("/x/ok_ania"), "hey_jarvis": Path("/x/hey_jarvis")}
 
@@ -139,7 +139,7 @@ class StatusTests(unittest.TestCase):
         ready = {"voxtype": True, "venv": True, "model": "ok_ania", "service": True}
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(cli, "request", return_value=None), \
-                mock.patch("omawake.setup.readiness", return_value=ready), \
+                mock.patch("omahey.setup.readiness", return_value=ready), \
                 mock.patch.object(cli.C, "load_config", return_value={
                     "mode": "ask", "sensitivity": "normal", "wake_word": "hey_omarchy",
                     "conversation": True}), \

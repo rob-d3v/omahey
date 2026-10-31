@@ -23,7 +23,7 @@ def run(argv=None):
             rc = e.code
         sys.stdout.flush()          # surface a broken pipe here, not at exit
         return rc
-    except BrokenPipeError:         # e.g. `omawake status | head -1`
+    except BrokenPipeError:         # e.g. `omahey status | head -1`
         _quiet_stdout()
         return 0
 

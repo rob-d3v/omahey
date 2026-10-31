@@ -21,7 +21,7 @@ from . import config as C
 from . import text as T
 from .wakeconf import parse_command
 
-log = logging.getLogger("omawake.commands")
+log = logging.getLogger("omahey.commands")
 
 _FILLER = {"please", "can", "could", "would", "you", "the", "a", "an", "my", "me", "for",
            "now", "to", "just", "hey", "ok", "okay", "uh", "um", "and", "thanks", "thank", "turn"}
